@@ -3,75 +3,10 @@ import json
 import time
 import os
 from openai import OpenAI
-from QGC.rov_movement import RovMovement
 from image_source import ScreenSource, make_image_source, encode_image
-ROV=RovMovement()
-direction_map = {
-            '前': 'forward',
-            '后': 'backward',
-            '左': 'left',
-            '右': 'right',
-            '停': 'stop'
-        }
-        
-        # 创建速度映射字典
-speed_map = {
-            'low': 100,
-            'medium': 200,
-            'high': 300,
-            'stop': 0
-        }
+from rov_backend import RovBackend, SimulatedBackend, make_backend
 
 
-class MPCController:
-    """MPC控制器类，用于控制ROV运动"""
-    
-    def __init__(self, rov):
-        self.rov = rov
-        self.control_frequency = 1  # 1Hz控制频率
-        self.total_time = 5  # 总控制时间5秒
-        self.acceleration_time = self.total_time / 2  # 前2.5秒加速
-        self.deceleration_time = self.total_time / 2  # 后2.5秒减速
-        
-    def execute_motion(self, direction, target_speed):
-        """
-        执行运动控制：先加速到目标速度，再减速到0
-        Args:
-            direction (str): 运动方向
-            target_speed (int): 目标速度
-        """
-        print(f"MPC控制开始：方向={direction}, 目标速度={target_speed}")
-        
-        # 计算每个控制周期的时间间隔
-        time_step = 1.0 / self.control_frequency
-        
-        # 加速阶段
-        steps_accel = int(self.acceleration_time * self.control_frequency)
-        if steps_accel > 0:
-            speed_step = target_speed / steps_accel
-            
-            for i in range(steps_accel):
-                current_speed = int((i + 1) * speed_step)
-                print(f"加速阶段: 步骤 {i+1}/{steps_accel}, 速度={current_speed}")
-                self.rov.move(direction, current_speed, time_step)
-                time.sleep(time_step)
-        
-        # 减速阶段
-        steps_decel = int(self.deceleration_time * self.control_frequency)
-        if steps_decel > 0:
-            speed_step = target_speed / steps_decel
-            
-            for i in range(steps_decel):
-                current_speed = int(target_speed - (i + 1) * speed_step)
-                # 确保速度不低于0
-                current_speed = max(0, current_speed)
-                print(f"减速阶段: 步骤 {i+1}/{steps_decel}, 速度={current_speed}")
-                self.rov.move(direction, current_speed, time_step)
-                time.sleep(time_step)
-        
-        # 确保最后停下來
-        self.rov.move(direction, 0, time_step)
-        print("MPC控制结束")
 class BaseBrain:
     """基类，包含大脑和小脑的公共方法"""
     
@@ -286,10 +221,10 @@ class BigBrain(BaseBrain):
 class SmallBrain(BaseBrain):
     """小脑类，负责执行决策"""
     
-    def __init__(self):
+    def __init__(self, backend: RovBackend = None):
         super().__init__()
-        # 初始化MPC控制器
-        self.mpc_controller = MPCController(ROV)
+        # 执行后端：默认打印模拟；传入 make_backend("ardusub") 可驱动真实 ROV
+        self.backend = backend if backend is not None else SimulatedBackend()
     
     def call_lmstudio_api(self, image_base64, instruction, task_plan=None, current_step=None, image_base64_2=None):
         # 调用LM Studio本地小脑API
@@ -430,12 +365,12 @@ class SmallBrain(BaseBrain):
         direction = action.get('direction')
         speed = action.get('speed')
 
-        # 使用MPC控制器执行运动控制
-        mapped_direction = direction_map.get(direction, direction)
-        mapped_speed = speed_map.get(speed, speed)
-        
-        # MPC控制器将在5秒内执行：先加速到目标速度，再减速到0
-        self.mpc_controller.execute_motion(mapped_direction, mapped_speed)
+        # 交给执行后端（阻塞直到动作结束）
+        try:
+            self.backend.execute(direction, speed)
+        except ValueError as e:
+            print(f"动作无效，改为停止: {e}")
+            self.backend.stop()
 
         print("是否执行完毕")
         user_input = input().strip()
