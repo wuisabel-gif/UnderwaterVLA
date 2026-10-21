@@ -311,13 +311,13 @@ class AutoController:
         self.emergency_stop_time = 0
         
         # 控制输出
-        self.control_outputs = {
-            'roll': 0.0,
-            'pitch': 0.0,
-            'throttle': 0.0,
-            'yaw': 0.0
-        }
+        # roll/pitch/yaw: 姿态；throttle: 垂直（上下）；forward: 前后；lateral: 左右平移
+        self.control_outputs = self._zero_outputs()
     
+    @staticmethod
+    def _zero_outputs() -> Dict[str, float]:
+        return {'roll': 0.0, 'pitch': 0.0, 'throttle': 0.0, 'yaw': 0.0, 'forward': 0.0, 'lateral': 0.0}
+
     def _init_controllers(self):
         """初始化控制器"""
         # PID控制器
@@ -379,7 +379,7 @@ class AutoController:
         self.mpc_controller.is_active = False
         
         # 清零控制输出
-        self.control_outputs = {'roll': 0.0, 'pitch': 0.0, 'throttle': 0.0, 'yaw': 0.0}
+        self.control_outputs = self._zero_outputs()
         
         logger.info("自动控制已停止")
     
@@ -415,10 +415,10 @@ class AutoController:
         if self.enable_depth_hold:
             depth_error = abs(self.target_depth - current_depth)
             if depth_error > self.depth_tolerance:
-                pitch_output = self.depth_pid.update(self.target_depth, current_depth)
-                self.control_outputs['pitch'] = pitch_output
+                # ROV 用垂直推进器（throttle 通道）保持深度，而不是俯仰
+                self.control_outputs['throttle'] = self.depth_pid.update(self.target_depth, current_depth)
             else:
-                self.control_outputs['pitch'] = 0.0
+                self.control_outputs['throttle'] = 0.0
         
         # 航向保持控制
         if self.enable_heading_hold:
@@ -436,11 +436,12 @@ class AutoController:
         # MPC控制
         if self.mpc_controller.is_active:
             mpc_outputs = self.mpc_controller.compute_control()
-            self.control_outputs['throttle'] = mpc_outputs['throttle']
+            # MPC 的平移输出是前后推力，走 ArduSub 的 forward 通道（5），不是垂直油门
+            self.control_outputs['forward'] = mpc_outputs['throttle']
             self.control_outputs['yaw'] += mpc_outputs['yaw']  # 与航向保持叠加
             
             # 限制输出范围
-            self.control_outputs['throttle'] = max(-1.0, min(1.0, self.control_outputs['throttle']))
+            self.control_outputs['forward'] = max(-1.0, min(1.0, self.control_outputs['forward']))
             self.control_outputs['yaw'] = max(-1.0, min(1.0, self.control_outputs['yaw']))
         
         # 安全检查
@@ -472,7 +473,7 @@ class AutoController:
         self.emergency_stop_time = time.time()
         
         # 清零所有控制输出
-        self.control_outputs = {'roll': 0.0, 'pitch': 0.0, 'throttle': 0.0, 'yaw': 0.0}
+        self.control_outputs = self._zero_outputs()
         
         # 重置控制器
         self.depth_pid.reset()
