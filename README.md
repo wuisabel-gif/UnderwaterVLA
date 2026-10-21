@@ -1,5 +1,10 @@
 # Dual Brain VLA Controller
 
+Reference implementation of the dual-brain underwater VLA controller described in
+[UnderwaterVLA (arXiv:2509.22441)](https://arxiv.org/abs/2509.22441). The original
+anonymous code drop is at <https://anonymous.4open.science/r/UnderwaterVLA-8FC8>;
+this repository continues development from it.
+
 This project implements a dual-brain architecture for controlling an underwater robot using vision-language-action (VLA) models. It consists of two main components: a "Big Brain" for high-level task planning and a "Small Brain" for low-level execution decisions.
 
 ## Project Structure
@@ -72,9 +77,45 @@ The ROV control system interfaces with the ArduSub firmware to control the physi
 }
 ```
 
+## Setup
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # fill in QVQMAX_API_KEY and the LM Studio endpoint
+```
+
+Credentials and endpoints are read from environment variables (`QVQMAX_API_KEY`,
+`QVQMAX_API_URL`, `LMSTUDIO_API_URL`, `LMSTUDIO_MODEL`). Nothing is hardcoded.
+
 ## Usage
 
-1. Run `python dual_brain_oop.py` to start the controller
-2. Select a preset instruction or enter a custom one
-3. The system will generate a task plan and execute it step by step
-4. The ROVMainController in the QGC module will translate decisions into actual ROV movements
+`run_vla.py` wires the brains to an image source and an execution backend:
+
+```bash
+# Screen capture + print-only simulation (original behaviour)
+python run_vla.py --instruction exp1
+
+# USB camera + simulation (verify the camera on the bench first)
+python run_vla.py --source camera:0 --instruction "钻过呼啦圈"
+
+# BlueROV video stream + real ArduSub over MAVLink (see QGC/config.ini)
+python run_vla.py --source udp://192.168.2.1:5600 --backend ardusub --instruction exp2
+```
+
+Omit `--instruction` for the interactive prompt. Other flags: `--settle` (seconds to
+wait after each action before capturing), `--max-steps` (hard cap per task),
+`--no-planner` (skip the cloud planner), `--interactive` (confirm each action).
+
+### Image sources (`image_source.py`)
+- `screen` – screenshot rotated 90° clockwise, the original behaviour
+- `camera:<index>` / `camera:<file>` / `udp://…` / `rtsp://…` – OpenCV capture
+
+### Execution backends (`rov_backend.py`)
+- `sim` – prints the motion via the `RovMovement` stub
+- `ardusub` – headless MAVLink + MPC loop from `QGC/`, blocks until each action finishes
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests
+```
