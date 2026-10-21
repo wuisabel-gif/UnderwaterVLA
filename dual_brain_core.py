@@ -221,10 +221,30 @@ class BigBrain(BaseBrain):
 class SmallBrain(BaseBrain):
     """小脑类，负责执行决策"""
     
-    def __init__(self, backend: RovBackend = None):
+    def __init__(self, backend: RovBackend = None, settle_time: float = 2.0,
+                 frame_gap: float = 1.0, interactive: bool = False, capture_retries: int = 5):
         super().__init__()
         # 执行后端：默认打印模拟；传入 make_backend("ardusub") 可驱动真实 ROV
         self.backend = backend if backend is not None else SimulatedBackend()
+        # 动作结束后等多久再抓图（让水体/画面稳定）
+        self.settle_time = settle_time
+        # 两帧之间的间隔，给小脑提供时间序列信息
+        self.frame_gap = frame_gap
+        # True 时每个动作后按回车确认（旧行为）；False 为全自动
+        self.interactive = interactive
+        self.capture_retries = capture_retries
+
+    def capture_pair(self):
+        """抓取两帧（间隔 frame_gap 秒），返回 (base64_1, base64_2)。失败重试后抛出 RuntimeError。"""
+        for attempt in range(1, self.capture_retries + 1):
+            b64_1, _ = self.encode_image_to_base64()
+            time.sleep(self.frame_gap)
+            b64_2, _ = self.encode_image_to_base64()
+            if b64_1 and b64_2:
+                return b64_1, b64_2
+            print(f"抓图失败，重试 {attempt}/{self.capture_retries}")
+            time.sleep(1)
+        raise RuntimeError("连续抓图失败，无法继续")
     
     def call_lmstudio_api(self, image_base64, instruction, task_plan=None, current_step=None, image_base64_2=None):
         # 调用LM Studio本地小脑API
@@ -372,20 +392,12 @@ class SmallBrain(BaseBrain):
             print(f"动作无效，改为停止: {e}")
             self.backend.stop()
 
-        print("是否执行完毕")
-        user_input = input().strip()
-        print(f"5s秒后screenshot")
-        time.sleep(5)
-        # 编码图片为base64
-        while 1:
-            try:
-                image_base64_1 = self.encode_image_to_base64()
-                time.sleep(1)
-                image_base64_2 = self.encode_image_to_base64()
-                break
-            except Exception as e:
-                print(f"Error encoding images: {e}")
-                # 如果无法读取新图片，则使用原图片
+        if self.interactive:
+            input("按回车确认动作已执行完毕...")
+        if self.settle_time > 0:
+            print(f"等待 {self.settle_time}s 后抓图")
+            time.sleep(self.settle_time)
+        image_base64_1, image_base64_2 = self.capture_pair()
 
         # 返回编码后的图片数据，供后续使用
         return image_base64_1, image_base64_2

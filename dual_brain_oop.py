@@ -1,38 +1,48 @@
 import json
 import time
-import os
-from PIL import ImageGrab
-import io
-import base64
-from openai import OpenAI
-from dual_brain_core import *
+from dual_brain_core import BigBrain, SmallBrain, BaseBrain
+
 
 class DualBrainController:
     """双脑控制器类，协调大脑和小脑工作"""
-    
-    def __init__(self):
+
+    def __init__(self, backend=None, image_source=None, settle_time: float = 2.0,
+                 interactive: bool = False, max_steps: int = 50, use_planner: bool = True):
+        """
+        Args:
+            backend: rov_backend.RovBackend 实例（None = 打印模拟）
+            image_source: image_source.ImageSource 实例或字符串（None = 屏幕截图）
+            settle_time: 每个动作后等待多少秒再抓图
+            interactive: True 时每个动作后需要按回车确认
+            max_steps: 单个任务最多执行多少个动作，超过则强制停止
+            use_planner: False 时跳过大脑规划，直接由小脑决策
+        """
+        if image_source is not None:
+            BaseBrain.set_image_source(image_source)
         self.big_brain = BigBrain()
-        self.small_brain = SmallBrain()
-        
+        self.small_brain = SmallBrain(backend=backend, settle_time=settle_time, interactive=interactive)
+        self.max_steps = max_steps
+        self.use_planner = use_planner
+
     def run_task_cycle(self, instruction):
         # 执行单次任务循环（串联模式）
-        
+
         try:
-            image_base64_1,IMG1 = self.big_brain.encode_image_to_base64()
-            image_base64_2,IMG2 = self.big_brain.encode_image_to_base64()
+            image_base64_1, image_base64_2 = self.small_brain.capture_pair()
         except Exception as e:
-            print(f"Error reading image files: {e}")
-            print("请确保图像文件存在且可访问")
+            print(f"抓图失败: {e}")
             return None, True  # 返回错误信号，停止循环
         
         # 首先调用大脑生成任务规划
-        print("正在生成任务规划...")
-        try:
-            task_plan = self.big_brain.call_qvqmax_api_for_planning(image_base64_1, instruction, image_base64_2)
-            self.big_brain.log_decision(task_plan)
-        except Exception as e:
-            print("请检查QVQMAX API是否正常,没网咯")
-            task_plan=None
+        task_plan = None
+        if self.use_planner:
+            print("正在生成任务规划...")
+            try:
+                task_plan = self.big_brain.call_qvqmax_api_for_planning(image_base64_1, instruction, image_base64_2)
+                self.big_brain.log_decision(task_plan)
+            except Exception as e:
+                print(f"请检查QVQMAX API是否正常: {e}")
+                task_plan = None
         if task_plan:
             print("任务规划生成成功:")
             print(json.dumps(task_plan, indent=2, ensure_ascii=False))
@@ -43,15 +53,26 @@ class DualBrainController:
         task_completed = False
         step_count = 1
         
+        actions_taken = 0
         while not task_completed:
-            print(f"\n执行步骤 {step_count}")
+            if actions_taken >= self.max_steps:
+                print(f"已达到最大动作数 {self.max_steps}，强制停止")
+                self.small_brain.backend.stop()
+                return None, True
+            actions_taken += 1
+            print(f"\n执行步骤 {step_count}（第 {actions_taken} 个动作）")
             
             # 只调用小脑API执行决策
             decision_response = self.small_brain.call_lmstudio_api(image_base64_1, instruction, task_plan, step_count, image_base64_2)
             
             # 执行决策
             if decision_response:
-                image_base64_1, image_base64_2= self.small_brain.execute_decision(decision_response)
+                try:
+                    image_base64_1, image_base64_2 = self.small_brain.execute_decision(decision_response)
+                except Exception as e:
+                    print(f"执行或抓图失败，停止任务: {e}")
+                    self.small_brain.backend.stop()
+                    return None, True
                 
                 # 检查任务是否完成
                 status = decision_response.get('status', '')
@@ -80,11 +101,26 @@ class DualBrainController:
                     "status": "任务中",
                     "reasoning": "API调用失败，使用默认停止指令"
                 }
-                self.small_brain.execute_decision(decision_response)
+                self.small_brain.backend.stop()
                 return None, True  # 返回错误信号，停止循环
 
+    def run_task(self, instruction) -> bool:
+        """执行一条指令直到模型回复"任务完成"或出错。返回是否完成。"""
+        while True:
+            decision_response, should_break = self.run_task_cycle(instruction)
+            if should_break:
+                done = bool(decision_response and decision_response.get('status') == '任务完成')
+                if not done:
+                    self.small_brain.backend.stop()
+                return done
+            time.sleep(1)
+
+    def close(self):
+        self.small_brain.backend.close()
+        BaseBrain.get_image_source().close()
+
     def run(self):
-        """运行主程序"""
+        """运行主程序（交互式命令行）"""
         while True:
             # 外层循环：接收键盘输入指令
             print("\n请输入指令（输入'退出'结束程序）:")
@@ -107,27 +143,16 @@ class DualBrainController:
                 print(f"使用自定义指令: {instruction}")
                 
             # 内层循环：执行任务直到模型回复"任务完成"
-            task_completed = False
-            while not task_completed:
-                # 执行任务循环
-                decision_response, should_break = self.run_task_cycle(instruction)
-                
-                if should_break:
-                    if decision_response and decision_response.get('status') == '任务完成':
-                        task_completed = True
-                    else:
-                        break
-                
-                # 添加短暂延迟避免API调用过于频繁
-                time.sleep(1)
+            done = self.run_task(instruction)
+            print("任务完成" if done else "任务未完成（出错或被中止）")
 
 
 def main():
-    # 创建双脑控制器实例
     controller = DualBrainController()
-    
-    # 运行主程序
-    controller.run()
+    try:
+        controller.run()
+    finally:
+        controller.close()
 
 
 if __name__ == "__main__":

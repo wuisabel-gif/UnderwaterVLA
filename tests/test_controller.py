@@ -1,0 +1,86 @@
+import os
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from PIL import Image
+from image_source import ImageSource
+from rov_backend import SimulatedBackend
+from dual_brain_oop import DualBrainController
+
+
+class StaticSource(ImageSource):
+    def __init__(self):
+        self.captures = 0
+
+    def capture(self):
+        self.captures += 1
+        return Image.new("RGB", (4, 4), (0, 0, 255))
+
+
+class FakeRov:
+    def __init__(self):
+        self.moves = []
+        self.stops = 0
+
+    def move(self, direction, speed, duration):
+        self.moves.append(direction)
+
+    def stop(self):
+        self.stops += 1
+
+
+def make_controller(decisions, planner=None):
+    rov = FakeRov()
+    backend = SimulatedBackend(rov=rov, total_time=2, control_frequency=1, sleep=lambda s: None)
+    ctl = DualBrainController(backend=backend, image_source=StaticSource(), settle_time=0,
+                              max_steps=5, use_planner=planner is not None)
+    ctl.small_brain.frame_gap = 0
+    queue = list(decisions)
+    ctl.small_brain.call_lmstudio_api = lambda *a, **k: queue.pop(0) if queue else None
+    ctl.big_brain.call_qvqmax_api_for_planning = lambda *a, **k: planner
+    return ctl, rov
+
+
+class ControllerTests(unittest.TestCase):
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        os.chdir(self._tmp.name)
+
+    def tearDown(self):
+        os.chdir(self._cwd)
+        self._tmp.cleanup()
+
+    def test_runs_until_complete(self):
+        ctl, rov = make_controller([
+            {"action": {"direction": "前", "speed": "low"}, "status": "任务中", "step_completed": True},
+            {"action": {"direction": "右", "speed": "medium"}, "status": "任务中"},
+            {"action": {"direction": "停", "speed": "stop"}, "status": "任务完成"},
+        ])
+        self.assertTrue(ctl.run_task("go"))
+        self.assertIn("forward", rov.moves)
+        self.assertIn("right", rov.moves)
+        self.assertGreaterEqual(rov.stops, 1)
+
+    def test_stops_on_api_failure(self):
+        ctl, rov = make_controller([None])
+        self.assertFalse(ctl.run_task("go"))
+        self.assertGreaterEqual(rov.stops, 1)
+
+    def test_max_steps_guard(self):
+        forever = [{"action": {"direction": "前", "speed": "low"}, "status": "任务中"}] * 20
+        ctl, rov = make_controller(forever)
+        self.assertFalse(ctl.run_task("go"))
+        self.assertEqual(rov.moves.count("forward"), 5 * 3)  # 5 actions x (2 ramp + 1 final)
+
+    def test_planner_used_when_enabled(self):
+        plan = {"task_plan": [{"step": 1, "description": "x"}], "total_steps": 1}
+        ctl, rov = make_controller([{"action": {"direction": "停", "speed": "stop"}, "status": "任务完成"}], planner=plan)
+        self.assertTrue(ctl.run_task("go"))
+
+
+if __name__ == "__main__":
+    unittest.main()
