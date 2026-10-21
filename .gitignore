@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+FIG/
+decision_log.json
+rov_control.log
+.DS_Store
