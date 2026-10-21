@@ -164,9 +164,11 @@ class ArduSubBackend(RovBackend):
                 state = self.mavlink.get_vehicle_state()
                 self.auto.update_vehicle_state(state)
                 out = self.auto.get_control_outputs()
+                # forward/lateral 只有在 AutoController 提供时才传（兼容新旧 QGC 栈）
+                extra = {k: out[k] for k in ('forward', 'lateral') if k in out}
                 self.mavlink.send_manual_control(
                     roll=out['roll'], pitch=out['pitch'],
-                    throttle=out['throttle'], yaw=out['yaw'])
+                    throttle=out['throttle'], yaw=out['yaw'], **extra)
             except Exception as e:  # 不能让发送线程死掉
                 logger.error("ArduSub 发送循环错误: %s", e)
             time.sleep(self.loop_period)
