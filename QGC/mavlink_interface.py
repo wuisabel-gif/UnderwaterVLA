@@ -22,7 +22,7 @@ class MavlinkInterface:
     
     def __init__(self, config_file: str = 'config.ini'):
         """初始化MAVLink接口"""
-        self.config = configparser.ConfigParser()
+        self.config = configparser.ConfigParser(inline_comment_prefixes=('#', ';'))
         self.config.read(config_file, encoding='utf-8')
         
         self.mavlink_connection = None
