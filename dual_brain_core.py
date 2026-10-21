@@ -2,10 +2,9 @@ import base64
 import json
 import time
 import os
-from PIL import ImageGrab
-import io
 from openai import OpenAI
 from QGC.rov_movement import RovMovement
+from image_source import ScreenSource, make_image_source, encode_image
 ROV=RovMovement()
 direction_map = {
             '前': 'forward',
@@ -92,39 +91,35 @@ class BaseBrain:
             "exp3": "判断鱼的轨迹 避开鱼"
         }
     
+    # 默认图像来源：屏幕截图（旧行为）。通过 set_image_source 可切换为相机/视频流，
+    # 所有 Brain 实例共享同一个来源。
+    _image_source = None
+
+    @classmethod
+    def set_image_source(cls, source):
+        """设置全局图像来源（ImageSource 实例，或 make_image_source 接受的字符串）"""
+        if isinstance(source, str):
+            source = make_image_source(source)
+        cls._image_source = source
+
+    @classmethod
+    def get_image_source(cls):
+        if cls._image_source is None:
+            cls._image_source = ScreenSource()
+        return cls._image_source
+
     def encode_image_to_base64(self):
         """
-        截取屏幕，顺时针旋转90度，保存为PNG文件，并返回base64编码的字符串
-        返回: (base64_string, filename) 元组
+        从当前图像来源抓取一帧，保存为PNG文件，并返回base64编码的字符串
+        返回: (base64_string, filename) 元组；失败时返回 (None, None)
         """
-        # 获取当前时间作为文件名
-        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"FIG/{timestamp}.png"
-        
         try:
-            # 确保 FIG 目录存在
-            os.makedirs("FIG", exist_ok=True)
-            
-            # 截取屏幕
-            screenshot = ImageGrab.grab()
-            
-            # 顺时针旋转90度
-            screenshot = screenshot.rotate(-90, expand=True)
-            
-            # 保存到磁盘
-            screenshot.save(filename, format="PNG")
-            
-            # 同时保存到内存缓冲区用于 base64 编码
-            buffer = io.BytesIO()
-            screenshot.save(buffer, format="PNG")
-            image_bytes = buffer.getvalue()
-            base64_string = base64.b64encode(image_bytes).decode('utf-8')
-            
-            print(f"截图成功，已旋转并保存为: {filename}")
+            img = self.get_image_source().capture()
+            base64_string, filename = encode_image(img)
+            print(f"抓图成功，已保存为: {filename}")
             return base64_string, filename
-            
         except Exception as e:
-            print(f"截图失败: {e}")
+            print(f"抓图失败: {e}")
             return None, None
 
     def log_decision(self, decision):
