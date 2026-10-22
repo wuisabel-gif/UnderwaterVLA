@@ -114,6 +114,19 @@ wait after each action before capturing), `--max-steps` (hard cap per task),
 - `sim` – prints the motion via the `RovMovement` stub
 - `ardusub` – headless MAVLink + MPC loop from `QGC/`, blocks until each action finishes
 
+## Offline replay (`replay.py`)
+
+Re-run the small brain over logged decisions and the screenshots in `FIG/` without
+putting the ROV in the water. Useful for comparing prompts or models.
+
+```bash
+python replay.py --instruction exp1 --dry-run   # just summarise the log
+python replay.py --instruction exp1 --out replay.json
+```
+
+Reports logged direction counts, JSON validity, direction agreement with the log,
+and model latency.
+
 ## Tests
 
 ```bash
