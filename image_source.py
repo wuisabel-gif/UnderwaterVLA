@@ -1,12 +1,12 @@
 """
-图像来源抽象层。
+Image source abstraction.
 
-大脑/小脑只关心"给我一张当前画面"，不关心画面来自屏幕截图、USB相机、
-还是ROV的UDP/RTSP视频流。本模块提供统一接口：
+The brains only care about "give me the current frame", not whether it comes from a
+screenshot, a USB camera or the ROV's UDP/RTSP video stream. This module provides one interface:
 
-    source = make_image_source("camera:0")      # USB相机
-    source = make_image_source("screen")         # 屏幕截图（旧行为）
-    source = make_image_source("udp://192.168.2.1:5600")  # BlueROV视频流
+    source = make_image_source("camera:0")      # USB camera
+    source = make_image_source("screen")         # screen capture (original behaviour)
+    source = make_image_source("udp://192.168.2.1:5600")  # BlueROV video stream
     img = source.capture()                       # PIL.Image
 """
 import io
@@ -19,7 +19,7 @@ from PIL import Image
 
 
 class ImageSource:
-    """图像来源基类"""
+    """Image source base class"""
 
     def capture(self) -> Image.Image:
         raise NotImplementedError
@@ -35,13 +35,13 @@ class ImageSource:
 
 
 class ScreenSource(ImageSource):
-    """屏幕截图来源。保留原项目的"顺时针旋转90度"行为（rotate 默认 -90）。"""
+    """Screen capture source. Keeps the original "rotate 90 degrees clockwise" behaviour (rotate defaults to -90)."""
 
     def __init__(self, rotate: int = -90):
         self.rotate = rotate
 
     def capture(self) -> Image.Image:
-        from PIL import ImageGrab  # 延迟导入，无显示环境时不报错
+        from PIL import ImageGrab  # lazy import so headless environments do not fail
         img = ImageGrab.grab()
         if self.rotate:
             img = img.rotate(self.rotate, expand=True)
@@ -50,13 +50,13 @@ class ScreenSource(ImageSource):
 
 class CameraSource(ImageSource):
     """
-    基于 OpenCV 的相机/视频流来源。
+    OpenCV-based camera/video stream source.
 
-    source 可以是：
-      - 整数设备号，例如 0
-      - 视频文件路径
-      - 网络流 URL：udp://..., rtsp://..., http://...
-      - GStreamer pipeline 字符串（需要带 gstreamer 的 OpenCV）
+    source can be:
+      - an integer device index, e.g. 0
+      - a video file path
+      - a network stream URL: udp://..., rtsp://..., http://...
+      - a GStreamer pipeline string (needs OpenCV built with gstreamer)
     """
 
     def __init__(self, source, width: Optional[int] = None, height: Optional[int] = None,
@@ -64,19 +64,19 @@ class CameraSource(ImageSource):
         try:
             import cv2
         except ImportError as e:
-            raise ImportError("CameraSource 需要 opencv-python: pip install opencv-python") from e
+            raise ImportError("CameraSource needs opencv-python: pip install opencv-python") from e
         self._cv2 = cv2
         self.source = source
         self.flush_frames = flush_frames
         self.rotate = rotate
         self.cap = cv2.VideoCapture(source)
         if not self.cap.isOpened():
-            raise RuntimeError(f"无法打开视频来源: {source!r}")
+            raise RuntimeError(f"Cannot open video source: {source!r}")
         if width:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         if height:
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        # 尽量减小缓冲，拿到的是"现在"而不是几秒前的帧
+        # Keep the buffer small so we get "now" rather than a frame from seconds ago
         try:
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         except Exception:
@@ -84,12 +84,12 @@ class CameraSource(ImageSource):
 
     def capture(self) -> Image.Image:
         cv2 = self._cv2
-        # 丢掉缓冲里的旧帧
+        # Drop stale frames from the buffer
         for _ in range(self.flush_frames):
             self.cap.grab()
         ok, frame = self.cap.read()
         if not ok or frame is None:
-            raise RuntimeError(f"读取视频帧失败: {self.source!r}")
+            raise RuntimeError(f"Failed to read a video frame: {self.source!r}")
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame)
         if self.rotate:
@@ -104,12 +104,12 @@ class CameraSource(ImageSource):
 
 def make_image_source(spec: str, **kwargs) -> ImageSource:
     """
-    根据字符串创建图像来源：
+    Build an image source from a string:
       "screen"            -> ScreenSource
       "camera:0"          -> CameraSource(0)
       "camera:/path.mp4"  -> CameraSource("/path.mp4")
       "udp://..." / "rtsp://..." / "http://..." -> CameraSource(url)
-      纯数字 "0"          -> CameraSource(0)
+      plain digits "0"    -> CameraSource(0)
     """
     spec = (spec or "screen").strip()
     if spec == "screen":
@@ -123,13 +123,13 @@ def make_image_source(spec: str, **kwargs) -> ImageSource:
         return CameraSource(int(spec), **kwargs)
     if "://" in spec or os.path.exists(spec):
         return CameraSource(spec, **kwargs)
-    raise ValueError(f"无法识别的图像来源: {spec!r}")
+    raise ValueError(f"Unrecognised image source: {spec!r}")
 
 
 def encode_image(img: Image.Image, save_dir: str = "FIG") -> Tuple[str, str]:
     """
-    把图像保存到 save_dir 并返回 (base64字符串, 文件名)。
-    与原 BaseBrain.encode_image_to_base64 的返回格式一致。
+    Save the image under save_dir and return (base64 string, filename).
+    Same return format as the original BaseBrain.encode_image_to_base64.
     """
     os.makedirs(save_dir, exist_ok=True)
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")

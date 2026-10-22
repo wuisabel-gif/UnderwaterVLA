@@ -3,35 +3,35 @@ import time
 
 class RovMovement:
     def __init__(self):
-        """初始化ROV移动控制器"""
+        """Initialize the ROV movement controller"""
         self.controller = RovController()
-        self.controller.arm()  # 初始化时解锁ROV
-        
+        self.controller.arm()  # arm the ROV on startup
+
     def move(self, direction, speed, duration):
         """
-        控制ROV按指定方向、速度移动指定时间
-        
-        参数:
-        direction (str): 移动方向，可选值：
-            - 'forward' - 前进
-            - 'backward' - 后退
-            - 'left' - 左移
-            - 'right' - 右移
-            - 'up' - 上浮
-            - 'down' - 下潜
-            - 'turn_left' - 左转
-            - 'turn_right' - 右转
-        speed (int): 移动速度，范围0-1000
-        duration (float): 移动持续时间，单位：秒
+        Move the ROV in the given direction at the given speed for the given time
+
+        Args:
+        direction (str): movement direction, one of:
+            - 'forward' - move forward
+            - 'backward' - move backward
+            - 'left' - strafe left
+            - 'right' - strafe right
+            - 'up' - ascend
+            - 'down' - descend
+            - 'turn_left' - yaw left
+            - 'turn_right' - yaw right
+        speed (int): movement speed, range 0-1000
+        duration (float): how long to move, in seconds
         """
-        # 保存原始速度
+        # Save the original speed
         original_speed = self.controller.default_speed
-        
+
         try:
-            # 设置新的速度
+            # Apply the new speed
             self.controller.default_speed = min(max(speed, 0), 1000)
-            
-            # 根据方向执行相应的移动命令
+
+            # Pick the movement command for the direction
             movement_functions = {
                 'forward': self.controller.move_forward,
                 'backward': self.controller.move_backward,
@@ -42,47 +42,47 @@ class RovMovement:
                 'turn_left': self.controller.turn_left,
                 'turn_right': self.controller.turn_right
             }
-            
+
             if direction not in movement_functions:
-                raise ValueError(f"无效的移动方向: {direction}")
-            
-            # 执行移动
+                raise ValueError(f"Invalid movement direction: {direction}")
+
+            # Execute the movement
             movement_functions[direction]()
-            
-            # 等待指定时间
+
+            # Wait for the requested duration
             time.sleep(duration)
-            
-            # 停止移动
+
+            # Stop moving
             self.controller.stop()
-            
+
         finally:
-            # 恢复原始速度
+            # Restore the original speed
             self.controller.default_speed = original_speed
-    
+
     def stop(self):
-        """停止所有移动"""
+        """Stop all movement"""
         self.controller.stop()
-    
+
     def close(self):
-        """关闭控制器并锁定ROV"""
+        """Shut down the controller and disarm the ROV"""
         self.controller.stop()
         self.controller.disarm()
 
-# 使用示例
+# Usage example
 if __name__ == "__main__":
-    # 创建ROV移动控制器
+    # Create the ROV movement controller
     rov = RovMovement()
-    
+
     try:
-        # 前进示例：速度500，持续2秒
+        # Forward example: speed 500 for 2 seconds
         rov.move('forward', 500, 2)
-        
-        # 上浮示例：速度300，持续1.5秒
+
+        # Ascend example: speed 300 for 1.5 seconds
         rov.move('up', 300, 1.5)
-        
-        # 左转示例：速度400，持续1秒
+
+        # Turn-left example: speed 400 for 1 second
         rov.move('turn_left', 400, 1)
-        
+
     finally:
-        # 确保程序结束时正确关闭控制器
+        # Make sure the controller is shut down cleanly on exit
         rov.close()

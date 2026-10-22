@@ -77,12 +77,12 @@ class ActionAxisTests(unittest.TestCase):
         return {k: v for k, v in ac.control_outputs.items() if v}
 
     def test_each_direction_hits_one_axis(self):
-        self.assertEqual(self.axis_for('前'), {'forward': 0.7})
-        self.assertEqual(self.axis_for('后'), {'forward': -0.7})
-        self.assertEqual(self.axis_for('右'), {'lateral': 0.7})
-        self.assertEqual(self.axis_for('左'), {'lateral': -0.7})
-        self.assertEqual(self.axis_for('上'), {'throttle': 0.7})
-        self.assertEqual(self.axis_for('下'), {'throttle': -0.7})
-        self.assertEqual(self.axis_for('右转'), {'yaw': 0.9})
-        self.assertEqual(self.axis_for('左转'), {'yaw': -0.9})
-        self.assertEqual(self.axis_for('停'), {})
+        self.assertEqual(self.axis_for('forward'), {'forward': 0.7})
+        self.assertEqual(self.axis_for('backward'), {'forward': -0.7})
+        self.assertEqual(self.axis_for('right'), {'lateral': 0.7})
+        self.assertEqual(self.axis_for('left'), {'lateral': -0.7})
+        self.assertEqual(self.axis_for('up'), {'throttle': 0.7})
+        self.assertEqual(self.axis_for('down'), {'throttle': -0.7})
+        self.assertEqual(self.axis_for('turn_right'), {'yaw': 0.9})
+        self.assertEqual(self.axis_for('turn_left'), {'yaw': -0.9})
+        self.assertEqual(self.axis_for('stop'), {})

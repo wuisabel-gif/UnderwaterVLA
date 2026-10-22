@@ -1,37 +1,37 @@
 class RovController:
     def __init__(self):
         self.default_speed = 500
-        print("模拟ROV控制器已初始化")
-        
+        print("Simulated ROV controller initialized")
+
     def arm(self):
-        print("模拟ROV已解锁")
-        
+        print("Simulated ROV armed")
+
     def disarm(self):
-        print("模拟ROV已锁定")
-        
+        print("Simulated ROV disarmed")
+
     def move_forward(self):
-        print(f"模拟ROV前进，速度: {self.default_speed}")
-        
+        print(f"Simulated ROV moving forward, speed: {self.default_speed}")
+
     def move_backward(self):
-        print(f"模拟ROV后退，速度: {self.default_speed}")
-        
+        print(f"Simulated ROV moving backward, speed: {self.default_speed}")
+
     def move_left(self):
-        print(f"模拟ROV左移，速度: {self.default_speed}")
-        
+        print(f"Simulated ROV strafing left, speed: {self.default_speed}")
+
     def move_right(self):
-        print(f"模拟ROV右移，速度: {self.default_speed}")
-        
+        print(f"Simulated ROV strafing right, speed: {self.default_speed}")
+
     def move_up(self):
-        print(f"模拟ROV上浮，速度: {self.default_speed}")
-        
+        print(f"Simulated ROV ascending, speed: {self.default_speed}")
+
     def move_down(self):
-        print(f"模拟ROV下潜，速度: {self.default_speed}")
-        
+        print(f"Simulated ROV descending, speed: {self.default_speed}")
+
     def turn_left(self):
-        print(f"模拟ROV左转，速度: {self.default_speed}")
-        
+        print(f"Simulated ROV turning left, speed: {self.default_speed}")
+
     def turn_right(self):
-        print(f"模拟ROV右转，速度: {self.default_speed}")
-        
+        print(f"Simulated ROV turning right, speed: {self.default_speed}")
+
     def stop(self):
-        print("模拟ROV停止")
+        print("Simulated ROV stopped")

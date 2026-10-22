@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-离线回放：用 decision_log.json 和 FIG/ 里的截图重新跑小脑，不下水就能比较提示词/模型。
+Offline replay: re-run the small brain over decision_log.json and the screenshots in FIG/ to compare prompts/models without putting the ROV in the water.
 
-  python replay.py --instruction exp1            # 重新询问小脑，报告一致率/JSON有效率/延迟
-  python replay.py --instruction exp1 --dry-run  # 只统计日志里已有的决策
+  python replay.py --instruction exp1            # re-query the small brain, report agreement / JSON validity / latency
+  python replay.py --instruction exp1 --dry-run  # only summarise the decisions already in the log
 
-每条小脑决策配上它之前最近的两张截图（按文件名时间戳）。
+Each small-brain decision is paired with the two most recent screenshots before it (by filename timestamp).
 """
 import argparse
 import base64
@@ -22,7 +22,7 @@ FIG_TS_FMT = "%Y-%m-%d_%H-%M-%S"
 
 
 def load_log(path):
-    """返回 [(timestamp, decision)]，按时间排序。坏行跳过。"""
+    """Return [(timestamp, decision)] sorted by time. Bad lines are skipped."""
     out = []
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -35,7 +35,7 @@ def load_log(path):
 
 
 def load_figs(fig_dir):
-    """返回 [(timestamp, path)]，按时间排序；文件名前 19 个字符是时间戳。"""
+    """Return [(timestamp, path)] sorted by time; the first 19 characters of the filename are the timestamp."""
     out = []
     for p in glob.glob(os.path.join(fig_dir, "*.png")):
         try:
@@ -47,13 +47,13 @@ def load_figs(fig_dir):
 
 
 def frames_before(figs, ts, n=2):
-    """时间戳 <= ts 的最后 n 张截图，按时间顺序。"""
+    """The last n screenshots with timestamp <= ts, in time order."""
     before = [p for t, p in figs if t <= ts]
     return before[-n:]
 
 
 def build_cases(log, figs):
-    """把日志变成回放用例：每条小脑决策 + 当时的任务规划/步骤 + 两张图。"""
+    """Turn the log into replay cases: each small-brain decision + the task plan/step at the time + two frames."""
     cases, plan, step = [], None, 1
     for ts, d in log:
         if not isinstance(d, dict):
@@ -76,7 +76,7 @@ def b64(path):
 
 
 def replay(cases, instruction, brain):
-    """重新询问小脑，返回每个用例的结果字典。"""
+    """Re-query the small brain and return a result dict per case."""
     results = []
     for c in cases:
         if len(c["frames"]) < 2:
@@ -117,9 +117,9 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Offline replay of small-brain decisions")
     p.add_argument("--log", default="decision_log.json")
     p.add_argument("--fig-dir", default="FIG")
-    p.add_argument("--instruction", "-i", default="exp1", help="指令或预设名 (exp1/exp2/exp3)")
-    p.add_argument("--dry-run", action="store_true", help="不调用模型，只统计日志")
-    p.add_argument("--out", help="把逐条结果写成 JSON 文件")
+    p.add_argument("--instruction", "-i", default="exp1", help="instruction or preset name (exp1/exp2/exp3)")
+    p.add_argument("--dry-run", action="store_true", help="do not call the model, only summarise the log")
+    p.add_argument("--out", help="write per-case results to a JSON file")
     a = p.parse_args(argv)
 
     cases = build_cases(load_log(a.log), load_figs(a.fig_dir))

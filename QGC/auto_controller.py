@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-自动控制模块
-包含PID控制器和自动控制算法，以及MPC控制器
+Automatic control module
+Contains the PID controller, the automatic control logic and the MPC controller
 """
 
 import time
@@ -15,115 +15,115 @@ import logging
 logger = logging.getLogger(__name__)
 
 class PIDController:
-    """PID控制器类"""
-    
-    def __init__(self, kp: float, ki: float, kd: float, 
+    """PID controller"""
+
+    def __init__(self, kp: float, ki: float, kd: float,
                  output_min: float = -1.0, output_max: float = 1.0):
-        """初始化PID控制器"""
+        """Initialize the PID controller"""
         self.kp = kp
         self.ki = ki
         self.kd = kd
         self.output_min = output_min
         self.output_max = output_max
-        
-        # 状态变量
+
+        # State variables
         self.prev_error = 0.0
         self.integral = 0.0
         self.last_time = time.time()
-        
+
     def reset(self):
-        """重置控制器状态"""
+        """Reset the controller state"""
         self.prev_error = 0.0
         self.integral = 0.0
         self.last_time = time.time()
-    
+
     def update(self, setpoint: float, current_value: float) -> float:
-        """更新PID控制器并返回控制输出"""
+        """Update the PID controller and return the control output"""
         current_time = time.time()
         dt = current_time - self.last_time
-        
+
         if dt <= 0:
             return 0.0
-        
-        # 计算误差
+
+        # Error
         error = setpoint - current_value
-        
-        # 积分项
+
+        # Integral term
         self.integral += error * dt
-        
-        # 微分项
+
+        # Derivative term
         derivative = (error - self.prev_error) / dt if dt > 0 else 0.0
-        
-        # PID输出
+
+        # PID output
         output = self.kp * error + self.ki * self.integral + self.kd * derivative
-        
-        # 限制输出范围
+
+        # Clamp the output
         output = max(self.output_min, min(self.output_max, output))
-        
-        # 更新状态
+
+        # Update state
         self.prev_error = error
         self.last_time = current_time
-        
+
         return output
 
 class MPCController:
-    """模型预测控制器类"""
-    
+    """Model predictive controller"""
+
     def __init__(self, config: configparser.ConfigParser):
-        """初始化MPC控制器"""
-        # MPC参数
-        self.control_horizon = 1.0  # 控制时域1秒
-        self.control_interval = 0.02  # 控制间隔20ms
+        """Initialize the MPC controller"""
+        # MPC parameters
+        self.control_horizon = 1.0  # 1 s control horizon
+        self.control_interval = 0.02  # 20 ms control interval
         self.steps = int(self.control_horizon / self.control_interval)
-        
-        # 速度映射 (低/中/高速)
+
+        # Speed map (low / medium / high)
         self.speed_map = {
             'low': {'translational': 0.2, 'rotational': 0.5},
             'medium': {'translational': 0.5, 'rotational': 1.0},
             'high': {'translational': 0.8, 'rotational': 1.5}
         }
-        
-        # 权重参数
-        self.beta = config.getfloat('MPC', 'beta', fallback=1.0)  # 跟踪误差权重
-        self.gamma = config.getfloat('MPC', 'gamma', fallback=0.1)  # 控制努力权重
-        self.delta = config.getfloat('MPC', 'delta', fallback=0.05)  # 流体阻力权重
-        
-        # 系统参数
-        self.mass = config.getfloat('MPC', 'mass', fallback=10.0)  # 系统质量(kg)
-        self.inertia = config.getfloat('MPC', 'inertia', fallback=0.5)  # 转动惯量(kg·m²)
-        self.translational_drag_coeff = config.getfloat('MPC', 'translational_drag_coeff', fallback=5.0)  # 平移阻力系数
-        self.rotational_drag_coeff = config.getfloat('MPC', 'rotational_drag_coeff', fallback=0.1)  # 旋转阻力系数
-        
-        # 当前状态
+
+        # Weights
+        self.beta = config.getfloat('MPC', 'beta', fallback=1.0)  # tracking error weight
+        self.gamma = config.getfloat('MPC', 'gamma', fallback=0.1)  # control effort weight
+        self.delta = config.getfloat('MPC', 'delta', fallback=0.05)  # hydrodynamic drag weight
+
+        # System parameters
+        self.mass = config.getfloat('MPC', 'mass', fallback=10.0)  # vehicle mass (kg)
+        self.inertia = config.getfloat('MPC', 'inertia', fallback=0.5)  # moment of inertia (kg·m²)
+        self.translational_drag_coeff = config.getfloat('MPC', 'translational_drag_coeff', fallback=5.0)  # translational drag coefficient
+        self.rotational_drag_coeff = config.getfloat('MPC', 'rotational_drag_coeff', fallback=0.1)  # rotational drag coefficient
+
+        # Current state
         self.current_velocity = 0.0
         self.current_angular_rate = 0.0
         self.estimated_translational_drag = 0.0
         self.estimated_rotational_drag = 0.0
-        
-        # 控制模式
+
+        # Control mode
         self.motion_axis = 'forward'  # forward / lateral / throttle / yaw
         self.target_velocity = 0.0
         self.target_angular_rate = 0.0
         self.reference_profile = []
-        
-        # 控制状态
+
+        # Control status
         self.is_active = False
         self.start_time = 0.0
-        
-    # 方向 -> (输出轴, 符号)。轴名与 AutoController.control_outputs / MavlinkInterface 一致：
-    # forward=前后(ch5) lateral=左右平移(ch6) throttle=上下(ch3) yaw=原地转向(ch4)
+
+    # direction -> (output axis, sign). Axis names match AutoController.control_outputs / MavlinkInterface:
+    # forward=fore/aft (ch5) lateral=strafe left/right (ch6) throttle=up/down (ch3) yaw=turn in place (ch4)
     DIRECTION_AXES = {
-        '前': ('forward', 1), '后': ('forward', -1),
-        '右': ('lateral', 1), '左': ('lateral', -1),
-        '上': ('throttle', 1), '下': ('throttle', -1),
-        '右转': ('yaw', 1), '左转': ('yaw', -1),
-        '停': ('forward', 0),
+        'forward': ('forward', 1), 'backward': ('forward', -1),
+        'right': ('lateral', 1), 'left': ('lateral', -1),
+        'up': ('throttle', 1), 'down': ('throttle', -1),
+        'turn_right': ('yaw', 1), 'turn_left': ('yaw', -1),
+        'stop': ('forward', 0),
     }
 
     def set_vla_command(self, direction: str, speed: str):
-        """设置VLA命令并生成参考轨迹"""
+        """Set the VLA command and generate the reference trajectory"""
         if direction not in self.DIRECTION_AXES:
-            logger.warning(f"未知的方向命令: {direction}")
+            logger.warning(f"Unknown direction command: {direction}")
             self.is_active = False
             return
         self.is_active = True
@@ -137,9 +137,9 @@ class MPCController:
             v_cmd = sign * self.speed_map.get(speed, {}).get('translational', 0.0)
             self.target_velocity = v_cmd
             self.reference_profile = self._generate_translational_profile(v_cmd)
-    
+
     def _generate_translational_profile(self, v_cmd: float) -> list:
-        """生成平移运动参考轨迹"""
+        """Generate the translational reference trajectory"""
         profile = []
         for i in range(self.steps):
             t = i * self.control_interval
@@ -153,9 +153,9 @@ class MPCController:
                 v_ref = 0.0
             profile.append(v_ref)
         return profile
-    
+
     def _generate_rotational_profile(self, r_cmd: float) -> list:
-        """生成旋转运动参考轨迹"""
+        """Generate the rotational reference trajectory"""
         profile = []
         for i in range(self.steps):
             t = i * self.control_interval
@@ -169,24 +169,24 @@ class MPCController:
                 r_ref = 0.0
             profile.append(r_ref)
         return profile
-    
+
     def update_state(self, vehicle_state: Dict[str, Any]):
-        """更新车辆状态"""
-        # 更新当前速度和角速度
+        """Update the vehicle state"""
+        # Update current velocity and angular rate
         if 'velocity' in vehicle_state:
             velocity = vehicle_state['velocity']
-            # 假设我们使用x方向的速度作为平移速度
+            # Assume the x-axis velocity is the translational velocity
             self.current_velocity = velocity.get('x', 0.0)
-            
+
         if 'attitude' in vehicle_state:
             attitude = vehicle_state['attitude']
-            # 使用偏航角速度
+            # Use the yaw rate
             self.current_angular_rate = attitude.get('yaw_rate', 0.0)
-    
+
     ZERO = {'forward': 0.0, 'lateral': 0.0, 'throttle': 0.0, 'yaw': 0.0}
 
     def compute_control(self) -> Dict[str, float]:
-        """计算MPC控制输出：四个轴，只有当前动作的轴非零"""
+        """Compute the MPC control output: four axes, only the axis of the current action is non-zero"""
         out = dict(self.ZERO)
         if not self.is_active:
             return out
@@ -200,203 +200,203 @@ class MPCController:
         if self.motion_axis == 'yaw':
             out['yaw'] = self._compute_rotational_control(reference_value)
         else:
-            # ponytail: 三个平移轴共用前向速度反馈，侧向/垂直没有独立测速时退化为开环
+            # ponytail: all three translational axes share the forward velocity feedback; lateral/vertical degrade to open loop without their own velocity measurement
             out[self.motion_axis] = self._compute_translational_control(reference_value)
         return out
-    
+
     def _estimate_drag(self):
-        """估计流体阻力"""
+        """Estimate hydrodynamic drag"""
         try:
-            # 平移阻力估计
-            if abs(self.current_velocity) > 0.01:  # 避免除零
+            # Translational drag estimate
+            if abs(self.current_velocity) > 0.01:  # avoid division by zero
                 # D_v = (τ_v - M*v_dot) / (v*|v|)
-                # 简化实现：使用当前速度和阻力系数计算
+                # Simplified: compute from the current velocity and the drag coefficient
                 self.estimated_translational_drag = self.translational_drag_coeff * self.current_velocity * abs(self.current_velocity)
-            
-            # 旋转阻力估计
-            if abs(self.current_angular_rate) > 0.01:  # 避免除零
+
+            # Rotational drag estimate
+            if abs(self.current_angular_rate) > 0.01:  # avoid division by zero
                 # D_r = (τ_r - I_z*r_dot) / (r*|r|)
-                # 简化实现：使用当前角速度和阻力系数计算
+                # Simplified: compute from the current angular rate and the drag coefficient
                 self.estimated_rotational_drag = self.rotational_drag_coeff * self.current_angular_rate * abs(self.current_angular_rate)
         except Exception as e:
-            logger.warning(f"阻力估计错误: {e}")
-    
+            logger.warning(f"Drag estimation error: {e}")
+
     def _compute_translational_control(self, reference_velocity: float) -> float:
-        """计算平移运动控制输出"""
-        # 计算跟踪误差
+        """Compute the translational control output"""
+        # Tracking error
         velocity_error = reference_velocity - self.current_velocity
-        
-        # 计算MPC优化目标
-        # 简化实现：使用比例控制和阻力补偿
-        thrust = (self.beta * velocity_error + 
+
+        # MPC objective
+        # Simplified: proportional control plus drag compensation
+        thrust = (self.beta * velocity_error +
                  self.delta * self.estimated_translational_drag) / self.mass
-        
-        # 限制输出范围
+
+        # Clamp the output
         thrust = max(-1.0, min(1.0, thrust))
         return thrust
-    
+
     def _compute_rotational_control(self, reference_angular_rate: float) -> float:
-        """计算旋转运动控制输出"""
-        # 计算跟踪误差
+        """Compute the rotational control output"""
+        # Tracking error
         angular_rate_error = reference_angular_rate - self.current_angular_rate
-        
-        # 计算MPC优化目标
-        # 简化实现：使用比例控制和阻力补偿
-        yaw_rate = (self.beta * angular_rate_error + 
+
+        # MPC objective
+        # Simplified: proportional control plus drag compensation
+        yaw_rate = (self.beta * angular_rate_error +
                    self.delta * self.estimated_rotational_drag) / self.inertia
-        
-        # 限制输出范围
+
+        # Clamp the output
         yaw_rate = max(-1.0, min(1.0, yaw_rate))
         return yaw_rate
 
 class AutoController:
-    """自动控制器类"""
-    
+    """Automatic controller"""
+
     def __init__(self, config_file: str = 'config.ini'):
-        """初始化自动控制器"""
+        """Initialize the automatic controller"""
         self.config = configparser.ConfigParser(inline_comment_prefixes=('#', ';'))
         self.config.read(config_file, encoding='utf-8')
-        
-        # 控制参数
+
+        # Control parameters
         self.control_frequency = self.config.getint('Control', 'control_frequency')
         self.max_throttle = self.config.getint('Control', 'max_throttle') / 100.0
         self.max_yaw_rate = self.config.getfloat('Control', 'max_yaw_rate')
         self.max_pitch_angle = self.config.getfloat('Control', 'max_pitch_angle')
         self.max_roll_angle = self.config.getfloat('Control', 'max_roll_angle')
-        
-        # 自动控制参数
+
+        # Automatic control parameters
         self.enable_depth_hold = self.config.getboolean('AutoControl', 'enable_depth_hold')
         self.target_depth = self.config.getfloat('AutoControl', 'target_depth')
         self.depth_tolerance = self.config.getfloat('AutoControl', 'depth_tolerance')
         self.enable_heading_hold = self.config.getboolean('AutoControl', 'enable_heading_hold')
         self.target_heading = self.config.getfloat('AutoControl', 'target_heading')
         self.heading_tolerance = self.config.getfloat('AutoControl', 'heading_tolerance')
-        
-        # 安全参数
+
+        # Safety parameters
         self.emergency_stop_timeout = self.config.getfloat('Safety', 'emergency_stop_timeout')
         self.max_depth = self.config.getfloat('Safety', 'max_depth')
         self.min_depth = self.config.getfloat('Safety', 'min_depth')
-        
-        # 初始化控制器
+
+        # Initialize controllers
         self._init_controllers()
-        
-        # 控制状态
+
+        # Control status
         self.is_active = False
         self.control_thread = None
         self.last_control_time = 0
         self.emergency_stop_time = 0
-        
-        # 控制输出
-        # roll/pitch/yaw: 姿态；throttle: 垂直（上下）；forward: 前后；lateral: 左右平移
+
+        # Control outputs
+        # roll/pitch/yaw: attitude; throttle: vertical (up/down); forward: fore/aft; lateral: strafe left/right
         self.control_outputs = self._zero_outputs()
-    
+
     @staticmethod
     def _zero_outputs() -> Dict[str, float]:
         return {'roll': 0.0, 'pitch': 0.0, 'throttle': 0.0, 'yaw': 0.0, 'forward': 0.0, 'lateral': 0.0}
 
     def _init_controllers(self):
-        """初始化控制器"""
-        # PID控制器
+        """Initialize the controllers"""
+        # PID controllers
         self._init_pid_controllers()
-        
-        # MPC控制器
+
+        # MPC controller
         self.mpc_controller = MPCController(self.config)
-    
+
     def _init_pid_controllers(self):
-        """初始化PID控制器"""
-        # 深度控制PID (俯仰控制)
+        """Initialize the PID controllers"""
+        # Depth-hold PID (pitch control)
         self.depth_pid = PIDController(
-            kp=0.5,    # 比例增益
-            ki=0.1,    # 积分增益
-            kd=0.2,    # 微分增益
+            kp=0.5,    # proportional gain
+            ki=0.1,    # integral gain
+            kd=0.2,    # derivative gain
             output_min=-0.5,
             output_max=0.5
         )
-        
-        # 航向控制PID (偏航控制)
+
+        # Heading-hold PID (yaw control)
         self.heading_pid = PIDController(
-            kp=0.8,    # 比例增益
-            ki=0.05,   # 积分增益
-            kd=0.3,    # 微分增益
+            kp=0.8,    # proportional gain
+            ki=0.05,   # integral gain
+            kd=0.3,    # derivative gain
             output_min=-0.8,
             output_max=0.8
         )
-        
-        # 横滚稳定PID
+
+        # Roll stabilization PID
         self.roll_pid = PIDController(
-            kp=1.0,    # 比例增益
-            ki=0.0,    # 积分增益
-            kd=0.5,    # 微分增益
+            kp=1.0,    # proportional gain
+            ki=0.0,    # integral gain
+            kd=0.5,    # derivative gain
             output_min=-0.3,
             output_max=0.3
         )
-    
+
     def start(self):
-        """启动自动控制"""
+        """Start automatic control"""
         if self.is_active:
-            logger.warning("自动控制已经在运行")
+            logger.warning("Automatic control is already running")
             return
-        
+
         self.is_active = True
         self.control_thread = threading.Thread(target=self._control_loop, daemon=True)
         self.control_thread.start()
-        logger.info("自动控制已启动")
-    
+        logger.info("Automatic control started")
+
     def stop(self):
-        """停止自动控制"""
+        """Stop automatic control"""
         self.is_active = False
         if self.control_thread:
             self.control_thread.join(timeout=1.0)
-        
-        # 重置所有控制器
+
+        # Reset all controllers
         self.depth_pid.reset()
         self.heading_pid.reset()
         self.roll_pid.reset()
         self.mpc_controller.is_active = False
-        
-        # 清零控制输出
+
+        # Zero the control outputs
         self.control_outputs = self._zero_outputs()
-        
-        logger.info("自动控制已停止")
-    
+
+        logger.info("Automatic control stopped")
+
     def _control_loop(self):
-        """主控制循环"""
+        """Main control loop"""
         while self.is_active:
             try:
                 current_time = time.time()
-                
-                # 控制频率限制
+
+                # Rate limit
                 if current_time - self.last_control_time < 1.0 / self.control_frequency:
                     time.sleep(0.01)
                     continue
-                
-                # 执行自动控制逻辑
+
+                # Run the automatic control logic
                 self._execute_auto_control()
-                
+
                 self.last_control_time = current_time
-                
+
             except Exception as e:
-                logger.error(f"控制循环错误: {e}")
+                logger.error(f"Control loop error: {e}")
                 time.sleep(0.1)
-    
+
     def _execute_auto_control(self):
-        """执行自动控制逻辑"""
-        # 从外部获取当前车辆状态
-        # 这些值应该通过update_vehicle_state方法更新
+        """Run the automatic control logic"""
+        # Current vehicle state, provided externally
+        # These values are updated through update_vehicle_state
         current_depth = getattr(self, '_current_depth', 0.0)
         current_heading = getattr(self, '_current_heading', 0.0)
         current_roll = getattr(self, '_current_roll', 0.0)
-        
-        # 深度保持控制
+
+        # Depth hold
         if self.enable_depth_hold:
             depth_error = abs(self.target_depth - current_depth)
             if depth_error > self.depth_tolerance:
-                # ROV 用垂直推进器（throttle 通道）保持深度，而不是俯仰
+                # The ROV holds depth with the vertical thrusters (throttle channel), not pitch
                 self.control_outputs['throttle'] = self.depth_pid.update(self.target_depth, current_depth)
             else:
                 self.control_outputs['throttle'] = 0.0
-        
-        # 航向保持控制
+
+        # Heading hold
         if self.enable_heading_hold:
             heading_error = abs(self.target_heading - current_heading)
             if heading_error > self.heading_tolerance:
@@ -404,96 +404,97 @@ class AutoController:
                 self.control_outputs['yaw'] = yaw_output
             else:
                 self.control_outputs['yaw'] = 0.0
-        
-        # 横滚稳定控制
+
+        # Roll stabilization
         roll_output = self.roll_pid.update(0.0, current_roll)
         self.control_outputs['roll'] = roll_output
-        
-        # MPC控制
+
+        # MPC control
         if self.mpc_controller.is_active:
             mpc_outputs = self.mpc_controller.compute_control()
             self.control_outputs['forward'] = mpc_outputs['forward']
             self.control_outputs['lateral'] = mpc_outputs['lateral']
             if self.mpc_controller.motion_axis == 'throttle':
-                self.control_outputs['throttle'] = mpc_outputs['throttle']  # 覆盖深度保持
-            self.control_outputs['yaw'] += mpc_outputs['yaw']  # 与航向保持叠加
+                self.control_outputs['throttle'] = mpc_outputs['throttle']  # overrides depth hold
+            self.control_outputs['yaw'] += mpc_outputs['yaw']  # added on top of heading hold
             for k in ('forward', 'lateral', 'throttle', 'yaw'):
                 self.control_outputs[k] = max(-1.0, min(1.0, self.control_outputs[k]))
-        
-        # 安全检查
+
+        # Safety check
         self._safety_check()
-    
+
     def _safety_check(self):
-        """安全检查"""
+        """Safety check"""
         current_time = time.time()
-        
-        # 深度限制检查。深度为负值，越深越小。
-        # 只有超过最大深度才紧急停止；比 min_depth 浅（包括水面上的 0m）只告警，
-        # 否则 ROV 在水面上就会被不断紧急停止而无法下潜。
+
+        # Depth limit check. Depth is negative: deeper is more negative.
+        # Only exceeding the max depth triggers an emergency stop; being shallower than min_depth
+        # (including 0 m at the surface) only logs, otherwise the ROV would be emergency-stopped
+        # over and over at the surface and could never dive.
         current_depth = getattr(self, '_current_depth', 0.0)
         if current_depth < self.max_depth:
-            logger.warning(f"深度超出最大限制: {current_depth}m < {self.max_depth}m")
+            logger.warning(f"Depth exceeds the maximum limit: {current_depth}m < {self.max_depth}m")
             self._emergency_stop()
             return
         if current_depth > self.min_depth:
-            logger.debug(f"深度浅于最小限制: {current_depth}m > {self.min_depth}m")
-        
-        # 紧急停止超时检查
+            logger.debug(f"Depth is shallower than the minimum limit: {current_depth}m > {self.min_depth}m")
+
+        # Emergency stop timeout check
         if self.emergency_stop_time > 0 and current_time - self.emergency_stop_time > self.emergency_stop_timeout:
-            logger.warning("紧急停止超时，恢复正常控制")
+            logger.warning("Emergency stop timed out, resuming normal control")
             self.emergency_stop_time = 0
-    
+
     def _emergency_stop(self):
-        """紧急停止"""
-        logger.warning("执行紧急停止！")
+        """Emergency stop"""
+        logger.warning("Executing emergency stop!")
         self.emergency_stop_time = time.time()
-        
-        # 清零所有控制输出
+
+        # Zero all control outputs
         self.control_outputs = self._zero_outputs()
-        
-        # 重置控制器
+
+        # Reset controllers
         self.depth_pid.reset()
         self.heading_pid.reset()
         self.roll_pid.reset()
         self.mpc_controller.is_active = False
-    
+
     def set_target_depth(self, depth: float):
-        """设置目标深度"""
+        """Set the target depth"""
         if self.min_depth <= depth <= self.max_depth:
             self.target_depth = depth
-            logger.info(f"目标深度设置为: {depth}m")
+            logger.info(f"Target depth set to: {depth}m")
         else:
-            logger.warning(f"目标深度 {depth}m 超出安全范围")
-    
+            logger.warning(f"Target depth {depth}m is outside the safe range")
+
     def set_target_heading(self, heading: float):
-        """设置目标航向"""
-        # 标准化航向到0-360度
+        """Set the target heading"""
+        # Normalize heading to 0-360 degrees
         heading = heading % 360
         self.target_heading = heading
-        logger.info(f"目标航向设置为: {heading}°")
-    
+        logger.info(f"Target heading set to: {heading}°")
+
     def execute_vla_command(self, direction: str, speed: str):
-        """执行VLA命令"""
-        logger.info(f"执行VLA命令: 方向={direction}, 速度={speed}")
+        """Execute a VLA command"""
+        logger.info(f"Executing VLA command: direction={direction}, speed={speed}")
         self.mpc_controller.set_vla_command(direction, speed)
-    
+
     def update_vehicle_state(self, vehicle_state: Dict[str, Any]):
-        """更新车辆状态（供外部调用）"""
-        # 更新当前状态值
+        """Update the vehicle state (called externally)"""
+        # Update current state values
         if 'position' in vehicle_state and 'depth' in vehicle_state['position']:
             self._current_depth = vehicle_state['position']['depth']
-        
+
         if 'attitude' in vehicle_state and 'yaw' in vehicle_state['attitude']:
             yaw = vehicle_state['attitude']['yaw']
-            # 转换为0-360度
+            # Convert to 0-360 degrees
             self._current_heading = (yaw * 180 / 3.14159) % 360
-        
+
         if 'attitude' in vehicle_state and 'roll' in vehicle_state['attitude']:
             self._current_roll = vehicle_state['attitude']['roll']
-            
-        # 更新MPC控制器状态
+
+        # Update the MPC controller state
         self.mpc_controller.update_state(vehicle_state)
-    
+
     def get_control_outputs(self) -> Dict[str, float]:
-        """获取当前控制输出"""
+        """Get the current control outputs"""
         return self.control_outputs.copy()

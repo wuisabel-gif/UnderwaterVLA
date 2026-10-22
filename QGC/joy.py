@@ -5,26 +5,26 @@ import json
 class VJoyController:
     def __init__(self, device_id=1):
         """
-        初始化虚拟手柄
-        :param device_id: vJoy 设备 ID（默认为 1）
+        Initialize the virtual joystick
+        :param device_id: vJoy device ID (default 1)
         """
         try:
             self.device = pyvjoy.VJoyDevice(device_id)
             self.reset()
-            print("vJoy 设备初始化成功")
+            print("vJoy device initialized")
         except Exception as e:
-            raise RuntimeError(f"vJoy 初始化失败: {e}")
+            raise RuntimeError(f"vJoy initialization failed: {e}")
 
     def reset(self):
-        """重置摇杆和按钮状态"""
+        """Reset the stick and button state"""
         self.device.reset()
         self.device.update()
 
     def set_axis(self, axis, value):
         """
-        设置摇杆轴值（归一化范围：-1.0 到 1.0）
-        :param axis: 轴名称（如 'x', 'y', 'rx', 'ry'）
-        :param value: 归一化值（自动映射到 vJoy 的 1-32768 范围）
+        Set a stick axis value (normalized range: -1.0 to 1.0)
+        :param axis: axis name (e.g. 'x', 'y', 'rx', 'ry')
+        :param value: normalized value (mapped to vJoy's 1-32768 range)
         """
         axis_map = {
             'x': pyvjoy.HID_USAGE_X,
@@ -35,114 +35,114 @@ class VJoyController:
             'rz': pyvjoy.HID_USAGE_RZ,
         }
         if axis not in axis_map:
-            raise ValueError(f"不支持的轴名称: {axis}")
-        
-        # 将归一化值 (-1~1) 映射到 vJoy 的 1-32768 范围
+            raise ValueError(f"Unsupported axis name: {axis}")
+
+        # Map the normalized value (-1~1) to vJoy's 1-32768 range
         scaled_value = int((value + 1) * 16384)  # 16384 = 32768/2
         self.device.set_axis(axis_map[axis], scaled_value)
 
     def press_button(self, button_id, state=True):
         """
-        按下/释放按钮
-        :param button_id: 按钮编号（从 1 开始）
-        :param state: True（按下）或 False（释放）
+        Press/release a button
+        :param button_id: button number (starting at 1)
+        :param state: True (pressed) or False (released)
         """
         self.device.set_button(button_id, state)
 
     def update(self):
-        """提交当前所有输入状态"""
+        """Commit the current input state"""
         self.device.update()
 
     def close(self):
-        """关闭设备"""
+        """Close the device"""
         self.reset()
         self.device = None
 
     def execute_from_json(self, json_input):
         """
-        从JSON输入中提取速度和方向，并执行相应的操作
-        :param json_input: 包含方向和速度信息的JSON字符串或字典
+        Extract the speed and direction from JSON input and perform the matching action
+        :param json_input: JSON string or dict containing direction and speed
         """
-        # 如果输入是字符串，则解析为字典
+        # Parse a string input into a dict
         if isinstance(json_input, str):
             try:
                 data = json.loads(json_input)
             except json.JSONDecodeError as e:
-                raise ValueError(f"无效的JSON输入: {e}")
+                raise ValueError(f"Invalid JSON input: {e}")
         elif isinstance(json_input, dict):
             data = json_input
         else:
-            raise TypeError("输入必须是JSON字符串或字典")
-        
-        # 提取动作信息
+            raise TypeError("Input must be a JSON string or a dict")
+
+        # Extract the action
         action = data.get('action', {})
         direction = action.get('direction')
         speed = action.get('speed')
-        
-        # 方向到轴映射
+
+        # Direction -> axis map
         direction_map = {
-            '前': {'axis': 'y', 'value': -1.0},  # 前进，Y轴负方向
-            '后': {'axis': 'y', 'value': 1.0},   # 后退，Y轴正方向
-            '左': {'axis': 'x', 'value': -1.0},  # 左移，X轴负方向
-            '右': {'axis': 'x', 'value': 1.0},   # 右移，X轴正方向
-            '停': {'axis': 'y', 'value': 0.0}    # 停止，所有轴归零
+            'forward': {'axis': 'y', 'value': -1.0},   # forward, negative Y
+            'backward': {'axis': 'y', 'value': 1.0},   # backward, positive Y
+            'left': {'axis': 'x', 'value': -1.0},      # strafe left, negative X
+            'right': {'axis': 'x', 'value': 1.0},      # strafe right, positive X
+            'stop': {'axis': 'y', 'value': 0.0}        # stop, all axes zeroed
         }
-        
-        # 速度到数值映射
+
+        # Speed -> value map
         speed_map = {
             'low': 0.3,
             'medium': 0.8,
             'high': 1.0,
             'stop': 0.0
         }
-        
-        # 重置设备
+
+        # Reset the device
         self.reset()
-        
-        # 如果方向是"停"，则所有轴归零
-        if direction == '停':
+
+        # A "stop" direction zeroes all axes
+        if direction == 'stop':
             self.set_axis('x', 0.0)
             self.set_axis('y', 0.0)
         else:
-            # 根据方向和速度设置轴值
+            # Set the axis value from direction and speed
             if direction in direction_map and speed in speed_map:
                 axis_info = direction_map[direction]
                 speed_value = speed_map[speed]
-                # 应用速度系数到轴值
+                # Scale the axis value by the speed factor
                 adjusted_value = axis_info['value'] * speed_value
                 self.set_axis(axis_info['axis'], adjusted_value)
-                
-                # 如果是斜向移动，可能需要同时设置X和Y轴
-                # 此实现假设基础方向是单一轴向移动
-                
-            else:
-                raise ValueError("无效的方向或速度值")
-        
-        # 提交输入状态
-        self.update()
-        print(f"执行动作: 方向={direction}, 速度={speed}")
 
-# 示例用法
+                # Diagonal movement might need X and Y set together;
+                # this implementation assumes each basic direction is a single axis
+
+            else:
+                raise ValueError("Invalid direction or speed value")
+
+        # Commit the input state
+        self.update()
+        print(f"Executing action: direction={direction}, speed={speed}")
+
+# Example usage
 if __name__ == "__main__":
-    # 初始化虚拟手柄
+    # Initialize the virtual joystick
     controller = VJoyController()
 
-    # 示例JSON输入
+    # Example JSON input
     json_input = {
-        "reasoning": "前进避障",
+        "reasoning": "Move forward, avoiding obstacles",
         "action": {
-            "direction": "前",
+            "direction": "forward",
             "speed": "medium",
             "confidence": 0.9
         },
-        "status": "任务中",
+        "status": "in progress",
         "step_completed": True
     }
-    
-    # 执行动作
+
+    # Execute the action
     controller.execute_from_json(json_input)
-    
-    # 保持状态 2 秒后释放
+
+    # Hold the state for 2 seconds, then release
     time.sleep(2)
     controller.reset()
     controller.close()

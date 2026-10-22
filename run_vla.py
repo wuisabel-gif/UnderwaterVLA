@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-命令行入口：把双脑 VLA 循环接到指定的图像来源和 ROV 后端。
+Command-line entry point: wires the dual-brain VLA loop to an image source and an ROV backend.
 
-示例：
-  # 旧行为：屏幕截图 + 打印模拟
+Examples:
+  # Original behaviour: screen capture + print-only simulation
   python run_vla.py --instruction exp1
 
-  # USB 相机 + 打印模拟（先在岸上验证画面）
-  python run_vla.py --source camera:0 --instruction "钻过呼啦圈"
+  # USB camera + print-only simulation (verify the picture on the bench first)
+  python run_vla.py --source camera:0 --instruction "Swim through the hula hoop"
 
-  # BlueROV 视频流 + 真实 ArduSub（通过 QGC/config.ini 的 MAVLink 设置）
+  # BlueROV video stream + real ArduSub (MAVLink settings from QGC/config.ini)
   python run_vla.py --source udp://192.168.2.1:5600 --backend ardusub --instruction exp2
 
-  # 不传 --instruction 则进入交互模式
+  # Omit --instruction for interactive mode
 """
 import argparse
 import logging
@@ -25,20 +25,20 @@ from rov_backend import make_backend
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Dual-brain underwater VLA controller")
     p.add_argument("--source", default="screen",
-                   help='图像来源: "screen"、"camera:<index|path>"、udp://、rtsp:// (默认 screen)')
+                   help='image source: "screen", "camera:<index|path>", udp://, rtsp:// (default screen)')
     p.add_argument("--rotate", type=int, default=None,
-                   help="抓到的图像旋转角度（度，逆时针为正）。screen 默认 -90，camera 默认 0")
-    p.add_argument("--backend", choices=["sim", "ardusub"], default="sim", help="执行后端 (默认 sim)")
-    p.add_argument("--config", default=None, help="ardusub 后端使用的 config.ini 路径 (默认 QGC/config.ini)")
-    p.add_argument("--repeats", type=int, default=1, help="ardusub 后端每个动作连续执行几个 MPC 时域")
-    p.add_argument("--settle", type=float, default=2.0, help="动作结束后等待多少秒再抓图")
-    p.add_argument("--max-steps", type=int, default=50, help="单个任务最多动作数")
-    p.add_argument("--no-planner", action="store_true", help="跳过云端大脑规划，仅用小脑")
-    p.add_argument("--interactive", action="store_true", help="每个动作后按回车确认")
-    p.add_argument("--min-confidence", type=float, default=0.5, help="低于此置信度的动作改为停止")
-    p.add_argument("--decision-timeout", type=float, default=30.0, help="小脑单次调用超时秒数，超时则停止")
+                   help="rotation applied to captured frames (degrees, counter-clockwise positive). screen defaults to -90, camera to 0")
+    p.add_argument("--backend", choices=["sim", "ardusub"], default="sim", help="execution backend (default sim)")
+    p.add_argument("--config", default=None, help="config.ini path for the ardusub backend (default QGC/config.ini)")
+    p.add_argument("--repeats", type=int, default=1, help="ardusub backend: how many consecutive MPC horizons each action runs")
+    p.add_argument("--settle", type=float, default=2.0, help="seconds to wait after each action before capturing")
+    p.add_argument("--max-steps", type=int, default=50, help="max actions per task")
+    p.add_argument("--no-planner", action="store_true", help="skip cloud big-brain planning, use only the small brain")
+    p.add_argument("--interactive", action="store_true", help="confirm each action with Enter")
+    p.add_argument("--min-confidence", type=float, default=0.5, help="actions below this confidence become stop")
+    p.add_argument("--decision-timeout", type=float, default=30.0, help="timeout in seconds for one small-brain call; stop on timeout")
     p.add_argument("--instruction", "-i", default=None,
-                   help="任务指令或预设名 (exp1/exp2/exp3)。不传则进入交互模式")
+                   help="task instruction or preset name (exp1/exp2/exp3). Omit for interactive mode")
     p.add_argument("-v", "--verbose", action="store_true")
     return p
 
@@ -75,12 +75,12 @@ def main(argv=None) -> int:
             controller.run()
             return 0
         instruction = controller.big_brain.preset_instructions.get(args.instruction, args.instruction)
-        print(f"指令: {instruction}")
+        print(f"Instruction: {instruction}")
         done = controller.run_task(instruction)
-        print("任务完成" if done else "任务未完成")
+        print("Task complete" if done else "Task not complete")
         return 0 if done else 1
     except KeyboardInterrupt:
-        print("\n用户中断，停止 ROV")
+        print("\nInterrupted by user, stopping ROV")
         backend.stop()
         return 130
     finally:
