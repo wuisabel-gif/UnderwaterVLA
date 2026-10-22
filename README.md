@@ -104,7 +104,9 @@ python run_vla.py --source udp://192.168.2.1:5600 --backend ardusub --instructio
 
 Omit `--instruction` for the interactive prompt. Other flags: `--settle` (seconds to
 wait after each action before capturing), `--max-steps` (hard cap per task),
-`--no-planner` (skip the cloud planner), `--interactive` (confirm each action).
+`--no-planner` (skip the cloud planner), `--interactive` (confirm each action),
+`--min-confidence` (actions below it become stop, default 0.5), `--decision-timeout`
+(seconds to wait for the small brain before stopping the ROV, default 30).
 
 ### Image sources (`image_source.py`)
 - `screen` – screenshot rotated 90° clockwise, the original behaviour

@@ -56,8 +56,8 @@ class ControllerTests(unittest.TestCase):
 
     def test_runs_until_complete(self):
         ctl, rov = make_controller([
-            {"action": {"direction": "前", "speed": "low"}, "status": "任务中", "step_completed": True},
-            {"action": {"direction": "右", "speed": "medium"}, "status": "任务中"},
+            {"action": {"direction": "前", "speed": "low", "confidence": 0.9}, "status": "任务中", "step_completed": True},
+            {"action": {"direction": "右", "speed": "medium", "confidence": 0.9}, "status": "任务中"},
             {"action": {"direction": "停", "speed": "stop"}, "status": "任务完成"},
         ])
         self.assertTrue(ctl.run_task("go"))
@@ -71,10 +71,20 @@ class ControllerTests(unittest.TestCase):
         self.assertGreaterEqual(rov.stops, 1)
 
     def test_max_steps_guard(self):
-        forever = [{"action": {"direction": "前", "speed": "low"}, "status": "任务中"}] * 20
+        forever = [{"action": {"direction": "前", "speed": "low", "confidence": 0.9}, "status": "任务中"}] * 20
         ctl, rov = make_controller(forever)
         self.assertFalse(ctl.run_task("go"))
         self.assertEqual(rov.moves.count("forward"), 5 * 3)  # 5 actions x (2 ramp + 1 final)
+
+    def test_low_confidence_becomes_stop(self):
+        ctl, rov = make_controller([
+            {"action": {"direction": "前", "speed": "high", "confidence": 0.2}, "status": "任务中"},
+            {"action": {"direction": "前", "speed": "high"}, "status": "任务中"},  # missing confidence
+            {"action": {"direction": "前", "speed": "low", "confidence": 0.9}, "status": "任务完成"},
+        ])
+        self.assertTrue(ctl.run_task("go"))
+        self.assertEqual(rov.moves.count("forward"), 3)  # only the confident action moved
+        self.assertGreaterEqual(rov.stops, 2)
 
     def test_planner_used_when_enabled(self):
         plan = {"task_plan": [{"step": 1, "description": "x"}], "total_steps": 1}
@@ -84,3 +94,4 @@ class ControllerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
