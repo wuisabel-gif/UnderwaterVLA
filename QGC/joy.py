@@ -2,6 +2,19 @@ import pyvjoy
 import time
 import json
 
+# Direction -> (axis, sign). Which physical stick each vJoy axis means is decided by the
+# joystick calibration in QGroundControl; the defaults here follow its usual ArduSub layout:
+# y = forward/backward, x = lateral strafe, z = vertical, rx = yaw.
+DIRECTION_MAP = {
+    'forward': ('y', -1.0), 'backward': ('y', 1.0),
+    'left': ('x', -1.0), 'right': ('x', 1.0),
+    'up': ('z', -1.0), 'down': ('z', 1.0),
+    'turn_left': ('rx', -1.0), 'turn_right': ('rx', 1.0),
+    'stop': ('y', 0.0),
+}
+MOTION_AXES = ('x', 'y', 'z', 'rx')
+
+
 class VJoyController:
     def __init__(self, device_id=1):
         """
@@ -79,15 +92,6 @@ class VJoyController:
         direction = action.get('direction')
         speed = action.get('speed')
 
-        # Direction -> axis map
-        direction_map = {
-            'forward': {'axis': 'y', 'value': -1.0},   # forward, negative Y
-            'backward': {'axis': 'y', 'value': 1.0},   # backward, positive Y
-            'left': {'axis': 'x', 'value': -1.0},      # strafe left, negative X
-            'right': {'axis': 'x', 'value': 1.0},      # strafe right, positive X
-            'stop': {'axis': 'y', 'value': 0.0}        # stop, all axes zeroed
-        }
-
         # Speed -> value map
         speed_map = {
             'low': 0.3,
@@ -99,24 +103,12 @@ class VJoyController:
         # Reset the device
         self.reset()
 
-        # A "stop" direction zeroes all axes
-        if direction == 'stop':
-            self.set_axis('x', 0.0)
-            self.set_axis('y', 0.0)
-        else:
-            # Set the axis value from direction and speed
-            if direction in direction_map and speed in speed_map:
-                axis_info = direction_map[direction]
-                speed_value = speed_map[speed]
-                # Scale the axis value by the speed factor
-                adjusted_value = axis_info['value'] * speed_value
-                self.set_axis(axis_info['axis'], adjusted_value)
-
-                # Diagonal movement might need X and Y set together;
-                # this implementation assumes each basic direction is a single axis
-
-            else:
-                raise ValueError("Invalid direction or speed value")
+        if direction not in DIRECTION_MAP or speed not in speed_map:
+            raise ValueError("Invalid direction or speed value")
+        for axis in MOTION_AXES:
+            self.set_axis(axis, 0.0)
+        axis, sign = DIRECTION_MAP[direction]
+        self.set_axis(axis, sign * speed_map[speed])
 
         # Commit the input state
         self.update()
