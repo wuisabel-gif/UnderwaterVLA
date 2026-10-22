@@ -68,7 +68,7 @@ The ROV control system interfaces with the ArduSub firmware to control the physi
 {
   "reasoning": "string (thought process and reasoning for the decision)",
   "action": {
-    "direction": "string (enum: ['前','后','左','右','停'])",
+    "direction": "string (enum: ['前','后','左','右','上','下','左转','右转','停'])",
     "speed": "string (enum: ['low','medium','high','stop'])",
     "confidence": "float [0.0-1.0]"
   },
@@ -86,6 +86,8 @@ cp .env.example .env   # fill in QVQMAX_API_KEY and the LM Studio endpoint
 
 Credentials and endpoints are read from environment variables (`QVQMAX_API_KEY`,
 `QVQMAX_API_URL`, `LMSTUDIO_API_URL`, `LMSTUDIO_MODEL`). Nothing is hardcoded.
+
+`左`/`右` strafe sideways; `左转`/`右转` yaw in place; `上`/`下` are vertical.
 
 ## Usage
 

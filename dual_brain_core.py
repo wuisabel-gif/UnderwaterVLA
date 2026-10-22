@@ -308,8 +308,8 @@ class SmallBrain(BaseBrain):
                 "仅接收单目RGB图像作为视觉输入",
                 "必须结合用户指令理解任务目标",
                 "如果有任务规划，需要按照当前步骤执行，如果你判断上一个步骤尚未完成请按照上一个步骤执行，在输出中添加step_completed: true字段",
-                "每次决策必须从[前, 后, 左, 右, 停,]五个基础动作中选择",
-                "每次决策必须从['low','medium','high','stop']五个基础速度中选择",
+                "每次决策必须从[前, 后, 左, 右, 上, 下, 左转, 右转, 停]九个基础动作中选择；左/右是平移，左转/右转是原地转向",
+                "每次决策必须从['low','medium','high','stop']四个基础速度中选择",
                 "严格以标准JSON格式输出结果，禁止任何额外文本",
                 "你认为未完成任务的时候选择输出任务中，完成任务的时候选择输出任务完成并且停止",
             ],
@@ -322,7 +322,7 @@ class SmallBrain(BaseBrain):
             "output_format": {
                 "reasoning": "string(对这个图片的思考和做决策的原因)",
                 "action": {
-                    "direction": "string (enum: ['前','后','左','右','停'])",
+                    "direction": "string (enum: ['前','后','左','右','上','下','左转','右转','停'])",
                     "speed": "string (enum: ['low','medium','high','stop'])",
                     "confidence": "float [0.0-1.0]"
                 },
