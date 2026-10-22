@@ -278,7 +278,7 @@ class AutoController:
     
     def __init__(self, config_file: str = 'config.ini'):
         """初始化自动控制器"""
-        self.config = configparser.ConfigParser()
+        self.config = configparser.ConfigParser(inline_comment_prefixes=('#', ';'))
         self.config.read(config_file, encoding='utf-8')
         
         # 控制参数
