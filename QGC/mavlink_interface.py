@@ -204,45 +204,41 @@ class MavlinkInterface:
                 logger.warning(f"状态监听错误: {e}")
                 time.sleep(0.1)
     
-    def send_manual_control(self, roll: float, pitch: float, throttle: float, yaw: float):
-        """发送手动控制指令"""
+    @staticmethod
+    def _to_rc(value: float) -> int:
+        """-1.0..1.0 -> 1000..2000"""
+        value = max(-1.0, min(1.0, value))
+        return int(round(1500 + value * 500))
+
+    def send_manual_control(self, roll: float, pitch: float, throttle: float, yaw: float,
+                            forward: float = 0.0, lateral: float = 0.0):
+        """
+        发送手动控制指令（RC_CHANNELS_OVERRIDE）。
+
+        ArduSub 默认的 RC 输入通道映射：
+          1 Pitch, 2 Roll, 3 Throttle(垂直), 4 Yaw, 5 Forward(前后), 6 Lateral(左右平移)
+        所有输入范围 -1.0 ~ 1.0，1500 为中位。
+        """
         if not self.is_connected:
             logger.warning("未连接，无法发送控制指令")
             return False
         
         try:
-            # 限制输入范围
-            roll = max(-1.0, min(1.0, roll))
-            pitch = max(-1.0, min(1.0, pitch))
-            throttle = max(-1.0, min(1.0, throttle))
-            yaw = max(-1.0, min(1.0, yaw))
-            
-            # 将-1到1的值转换为RC通道值（1000-2000）
-            # 通道1: Roll (左右)
-            # 通道2: Pitch (前后)
-            # 通道3: Throttle (上下)
-            # 通道4: Yaw (转向)
-            
-            roll_rc = int(1500 + roll * 500)      # 1000-2000
-            pitch_rc = int(1500 + pitch * 500)    # 1000-2000
-            throttle_rc = int(1500 + throttle * 500)  # 1000-2000
-            yaw_rc = int(1500 + yaw * 500)       # 1000-2000
-            
-            # 使用RC_CHANNELS_OVERRIDE发送控制指令
+            channels = {
+                1: self._to_rc(pitch),
+                2: self._to_rc(roll),
+                3: self._to_rc(throttle),
+                4: self._to_rc(yaw),
+                5: self._to_rc(forward),
+                6: self._to_rc(lateral),
+            }
             self.mavlink_connection.mav.rc_channels_override_send(
-                target_system=self.mavlink_connection.target_system,
-                target_component=self.mavlink_connection.target_component,
-                chan1_raw=roll_rc,      # Roll
-                chan2_raw=pitch_rc,     # Pitch
-                chan3_raw=throttle_rc,  # Throttle
-                chan4_raw=yaw_rc,       # Yaw
-                chan5_raw=65535,        # 不覆盖
-                chan6_raw=65535,        # 不覆盖
-                chan7_raw=65535,        # 不覆盖
-                chan8_raw=65535         # 不覆盖
+                self.mavlink_connection.target_system,
+                self.mavlink_connection.target_component,
+                channels[1], channels[2], channels[3], channels[4],
+                channels[5], channels[6], 65535, 65535
             )
-            
-            logger.info(f"发送RC控制: Roll={roll_rc}, Pitch={pitch_rc}, Throttle={throttle_rc}, Yaw={yaw_rc}")
+            logger.debug(f"发送RC控制: {channels}")
             return True
             
         except Exception as e:

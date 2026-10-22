@@ -180,7 +180,9 @@ class ROVMainController:
             roll=control_outputs['roll'],
             pitch=control_outputs['pitch'],
             throttle=control_outputs['throttle'],
-            yaw=control_outputs['yaw']
+            yaw=control_outputs['yaw'],
+            forward=control_outputs.get('forward', 0.0),
+            lateral=control_outputs.get('lateral', 0.0)
         )
     
     def _process_vla_commands(self):
