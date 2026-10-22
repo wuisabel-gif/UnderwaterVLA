@@ -86,6 +86,20 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(rov.moves.count("forward"), 3)  # only the confident action moved
         self.assertGreaterEqual(rov.stops, 2)
 
+    def test_history_records_executed_actions(self):
+        ctl, rov = make_controller([
+            {"action": {"direction": "前", "speed": "low", "confidence": 0.9}, "status": "任务中"},
+            {"action": {"direction": "前", "speed": "high", "confidence": 0.1}, "status": "任务中"},  # gated
+            {"action": {"direction": "停", "speed": "stop", "confidence": 0.9}, "status": "任务完成"},
+        ])
+        ctl.small_brain.history = __import__("collections").deque(maxlen=2)
+        self.assertTrue(ctl.run_task("go"))
+        # gated action is recorded as the stop that was actually executed; maxlen drops the first
+        self.assertEqual([h["direction"] for h in ctl.small_brain.history], ["停", "停"])
+        ctl.small_brain.call_lmstudio_api = lambda *a, **k: None
+        ctl.run_task("again")
+        self.assertEqual(len(ctl.small_brain.history), 0)
+
     def test_planner_used_when_enabled(self):
         plan = {"task_plan": [{"step": 1, "description": "x"}], "total_steps": 1}
         ctl, rov = make_controller([{"action": {"direction": "停", "speed": "stop"}, "status": "任务完成"}], planner=plan)
