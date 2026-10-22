@@ -28,6 +28,7 @@ class DualBrainController:
 
     def run_task_cycle(self, instruction):
         # 执行单次任务循环（串联模式）
+        self.small_brain.history.clear()  # history is per task
 
         try:
             image_base64_1, image_base64_2 = self.small_brain.capture_pair()

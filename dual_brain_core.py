@@ -1,4 +1,5 @@
 import base64
+import collections
 import json
 import time
 import os
@@ -223,8 +224,10 @@ class SmallBrain(BaseBrain):
     
     def __init__(self, backend: RovBackend = None, settle_time: float = 2.0,
                  frame_gap: float = 1.0, interactive: bool = False, capture_retries: int = 5,
-                 min_confidence: float = 0.5, decision_timeout: float = 30.0):
+                 min_confidence: float = 0.5, decision_timeout: float = 30.0, history_len: int = 5):
         super().__init__()
+        # Last few executed actions, sent to the model so it can reason over the sequence.
+        self.history = collections.deque(maxlen=history_len)
         # 置信度低于此值的动作改为停止；缺失置信度视为 0
         self.min_confidence = min_confidence
         # 小脑单次调用的最长等待秒数，超时返回 None（上层会停止 ROV）
@@ -294,6 +297,8 @@ class SmallBrain(BaseBrain):
         if task_plan and current_step is not None:
             text_content += f"\n任务规划: {json.dumps(task_plan, ensure_ascii=False)}"
             text_content += f"\n当前步骤: {current_step}"
+        if self.history:
+            text_content += f"\n最近动作(旧->新): {json.dumps(list(self.history), ensure_ascii=False)}"
             
         user_content.append({
             "type": "text",
@@ -308,6 +313,7 @@ class SmallBrain(BaseBrain):
                 "仅接收单目RGB图像作为视觉输入",
                 "必须结合用户指令理解任务目标",
                 "如果有任务规划，需要按照当前步骤执行，如果你判断上一个步骤尚未完成请按照上一个步骤执行，在输出中添加step_completed: true字段",
+                "输入中的最近动作是你之前已经执行过的动作序列，请结合两帧图像判断它们的效果，避免重复无效动作或来回震荡",
                 "每次决策必须从[前, 后, 左, 右, 上, 下, 左转, 右转, 停]九个基础动作中选择；左/右是平移，左转/右转是原地转向",
                 "每次决策必须从['low','medium','high','stop']四个基础速度中选择",
                 "严格以标准JSON格式输出结果，禁止任何额外文本",
@@ -394,6 +400,9 @@ class SmallBrain(BaseBrain):
         if not isinstance(confidence, (int, float)) or confidence < self.min_confidence:
             print(f"置信度 {confidence!r} 低于阈值 {self.min_confidence}，改为停止")
             direction, speed = '停', 'stop'
+
+        self.history.append({"direction": direction, "speed": speed,
+                             "step_completed": decision.get("step_completed", True)})
 
         # 交给执行后端（阻塞直到动作结束）
         try:
