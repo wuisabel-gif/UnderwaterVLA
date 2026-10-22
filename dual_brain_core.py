@@ -222,8 +222,13 @@ class SmallBrain(BaseBrain):
     """小脑类，负责执行决策"""
     
     def __init__(self, backend: RovBackend = None, settle_time: float = 2.0,
-                 frame_gap: float = 1.0, interactive: bool = False, capture_retries: int = 5):
+                 frame_gap: float = 1.0, interactive: bool = False, capture_retries: int = 5,
+                 min_confidence: float = 0.5, decision_timeout: float = 30.0):
         super().__init__()
+        # 置信度低于此值的动作改为停止；缺失置信度视为 0
+        self.min_confidence = min_confidence
+        # 小脑单次调用的最长等待秒数，超时返回 None（上层会停止 ROV）
+        self.decision_timeout = decision_timeout
         # 执行后端：默认打印模拟；传入 make_backend("ardusub") 可驱动真实 ROV
         self.backend = backend if backend is not None else SimulatedBackend()
         # 动作结束后等多久再抓图（让水体/画面稳定）
@@ -345,6 +350,7 @@ class SmallBrain(BaseBrain):
                 stream=False,
                 temperature=0.5,  # 设置温度为0以获得确定性输出
                 max_tokens=500,
+                timeout=self.decision_timeout,
             )
             
             # 获取响应内容
@@ -384,6 +390,10 @@ class SmallBrain(BaseBrain):
         action = decision.get('action', {})
         direction = action.get('direction')
         speed = action.get('speed')
+        confidence = action.get('confidence')
+        if not isinstance(confidence, (int, float)) or confidence < self.min_confidence:
+            print(f"置信度 {confidence!r} 低于阈值 {self.min_confidence}，改为停止")
+            direction, speed = '停', 'stop'
 
         # 交给执行后端（阻塞直到动作结束）
         try:

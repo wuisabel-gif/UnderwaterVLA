@@ -7,7 +7,8 @@ class DualBrainController:
     """双脑控制器类，协调大脑和小脑工作"""
 
     def __init__(self, backend=None, image_source=None, settle_time: float = 2.0,
-                 interactive: bool = False, max_steps: int = 50, use_planner: bool = True):
+                 interactive: bool = False, max_steps: int = 50, use_planner: bool = True,
+                 min_confidence: float = 0.5, decision_timeout: float = 30.0):
         """
         Args:
             backend: rov_backend.RovBackend 实例（None = 打印模拟）
@@ -20,7 +21,8 @@ class DualBrainController:
         if image_source is not None:
             BaseBrain.set_image_source(image_source)
         self.big_brain = BigBrain()
-        self.small_brain = SmallBrain(backend=backend, settle_time=settle_time, interactive=interactive)
+        self.small_brain = SmallBrain(backend=backend, settle_time=settle_time, interactive=interactive,
+                                      min_confidence=min_confidence, decision_timeout=decision_timeout)
         self.max_steps = max_steps
         self.use_planner = use_planner
 

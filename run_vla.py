@@ -35,6 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-steps", type=int, default=50, help="单个任务最多动作数")
     p.add_argument("--no-planner", action="store_true", help="跳过云端大脑规划，仅用小脑")
     p.add_argument("--interactive", action="store_true", help="每个动作后按回车确认")
+    p.add_argument("--min-confidence", type=float, default=0.5, help="低于此置信度的动作改为停止")
+    p.add_argument("--decision-timeout", type=float, default=30.0, help="小脑单次调用超时秒数，超时则停止")
     p.add_argument("--instruction", "-i", default=None,
                    help="任务指令或预设名 (exp1/exp2/exp3)。不传则进入交互模式")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -62,6 +64,8 @@ def main(argv=None) -> int:
         image_source=image_source,
         settle_time=args.settle,
         interactive=args.interactive,
+        min_confidence=args.min_confidence,
+        decision_timeout=args.decision_timeout,
         max_steps=args.max_steps,
         use_planner=not args.no_planner,
     )
