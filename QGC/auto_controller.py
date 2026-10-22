@@ -101,7 +101,7 @@ class MPCController:
         self.estimated_rotational_drag = 0.0
         
         # 控制模式
-        self.motion_mode = None  # 'translation' 或 'turning'
+        self.motion_axis = 'forward'  # forward / lateral / throttle / yaw
         self.target_velocity = 0.0
         self.target_angular_rate = 0.0
         self.reference_profile = []
@@ -110,41 +110,33 @@ class MPCController:
         self.is_active = False
         self.start_time = 0.0
         
+    # 方向 -> (输出轴, 符号)。轴名与 AutoController.control_outputs / MavlinkInterface 一致：
+    # forward=前后(ch5) lateral=左右平移(ch6) throttle=上下(ch3) yaw=原地转向(ch4)
+    DIRECTION_AXES = {
+        '前': ('forward', 1), '后': ('forward', -1),
+        '右': ('lateral', 1), '左': ('lateral', -1),
+        '上': ('throttle', 1), '下': ('throttle', -1),
+        '右转': ('yaw', 1), '左转': ('yaw', -1),
+        '停': ('forward', 0),
+    }
+
     def set_vla_command(self, direction: str, speed: str):
         """设置VLA命令并生成参考轨迹"""
-        # 重置控制器
-        self.is_active = True
-        self.start_time = time.time()
-        
-        # 根据方向确定运动模式
-        if direction in ['前', '后']:
-            self.motion_mode = 'translation'
-            # 获取目标速度
-            v_cmd = self.speed_map.get(speed, {}).get('translational', 0.0)
-            # 根据方向调整符号
-            if direction == '后':
-                v_cmd = -v_cmd
-            self.target_velocity = v_cmd
-            # 生成参考轨迹
-            self.reference_profile = self._generate_translational_profile(v_cmd)
-        elif direction in ['左', '右']:
-            self.motion_mode = 'turning'
-            # 获取目标角速度
-            r_cmd = self.speed_map.get(speed, {}).get('rotational', 0.0)
-            # 根据方向调整符号
-            if direction == '左':
-                r_cmd = -r_cmd
-            self.target_angular_rate = r_cmd
-            # 生成参考轨迹
-            self.reference_profile = self._generate_rotational_profile(r_cmd)
-        elif direction == '停':
-            self.motion_mode = 'translation'  # 停止视为平移停止
-            self.target_velocity = 0.0
-            self.reference_profile = self._generate_translational_profile(0.0)
-        else:
+        if direction not in self.DIRECTION_AXES:
             logger.warning(f"未知的方向命令: {direction}")
             self.is_active = False
             return
+        self.is_active = True
+        self.start_time = time.time()
+        self.motion_axis, sign = self.DIRECTION_AXES[direction]
+        if self.motion_axis == 'yaw':
+            r_cmd = sign * self.speed_map.get(speed, {}).get('rotational', 0.0)
+            self.target_angular_rate = r_cmd
+            self.reference_profile = self._generate_rotational_profile(r_cmd)
+        else:
+            v_cmd = sign * self.speed_map.get(speed, {}).get('translational', 0.0)
+            self.target_velocity = v_cmd
+            self.reference_profile = self._generate_translational_profile(v_cmd)
     
     def _generate_translational_profile(self, v_cmd: float) -> list:
         """生成平移运动参考轨迹"""
@@ -191,42 +183,26 @@ class MPCController:
             # 使用偏航角速度
             self.current_angular_rate = attitude.get('yaw_rate', 0.0)
     
+    ZERO = {'forward': 0.0, 'lateral': 0.0, 'throttle': 0.0, 'yaw': 0.0}
+
     def compute_control(self) -> Dict[str, float]:
-        """计算MPC控制输出"""
+        """计算MPC控制输出：四个轴，只有当前动作的轴非零"""
+        out = dict(self.ZERO)
         if not self.is_active:
-            return {'throttle': 0.0, 'yaw': 0.0}
-        
-        # 计算当前时间
-        current_time = time.time()
-        elapsed_time = current_time - self.start_time
-        
-        # 检查是否超过控制时域
+            return out
+        elapsed_time = time.time() - self.start_time
         if elapsed_time > self.control_horizon:
             self.is_active = False
-            return {'throttle': 0.0, 'yaw': 0.0}
-        
-        # 计算当前步骤
-        step = int(elapsed_time / self.control_interval)
-        if step >= len(self.reference_profile):
-            step = len(self.reference_profile) - 1
-            
-        # 获取参考信号
+            return out
+        step = min(int(elapsed_time / self.control_interval), len(self.reference_profile) - 1)
         reference_value = self.reference_profile[step]
-        
-        # 估计流体阻力
         self._estimate_drag()
-        
-        # 根据运动模式计算控制输出
-        if self.motion_mode == 'translation':
-            # 平移运动控制
-            thrust = self._compute_translational_control(reference_value)
-            return {'throttle': thrust, 'yaw': 0.0}
-        elif self.motion_mode == 'turning':
-            # 旋转运动控制
-            yaw_rate = self._compute_rotational_control(reference_value)
-            return {'throttle': 0.0, 'yaw': yaw_rate}
+        if self.motion_axis == 'yaw':
+            out['yaw'] = self._compute_rotational_control(reference_value)
         else:
-            return {'throttle': 0.0, 'yaw': 0.0}
+            # ponytail: 三个平移轴共用前向速度反馈，侧向/垂直没有独立测速时退化为开环
+            out[self.motion_axis] = self._compute_translational_control(reference_value)
+        return out
     
     def _estimate_drag(self):
         """估计流体阻力"""
@@ -436,13 +412,13 @@ class AutoController:
         # MPC控制
         if self.mpc_controller.is_active:
             mpc_outputs = self.mpc_controller.compute_control()
-            # MPC 的平移输出是前后推力，走 ArduSub 的 forward 通道（5），不是垂直油门
-            self.control_outputs['forward'] = mpc_outputs['throttle']
+            self.control_outputs['forward'] = mpc_outputs['forward']
+            self.control_outputs['lateral'] = mpc_outputs['lateral']
+            if self.mpc_controller.motion_axis == 'throttle':
+                self.control_outputs['throttle'] = mpc_outputs['throttle']  # 覆盖深度保持
             self.control_outputs['yaw'] += mpc_outputs['yaw']  # 与航向保持叠加
-            
-            # 限制输出范围
-            self.control_outputs['forward'] = max(-1.0, min(1.0, self.control_outputs['forward']))
-            self.control_outputs['yaw'] = max(-1.0, min(1.0, self.control_outputs['yaw']))
+            for k in ('forward', 'lateral', 'throttle', 'yaw'):
+                self.control_outputs[k] = max(-1.0, min(1.0, self.control_outputs[k]))
         
         # 安全检查
         self._safety_check()

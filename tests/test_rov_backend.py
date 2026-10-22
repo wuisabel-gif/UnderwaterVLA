@@ -36,7 +36,7 @@ class SimulatedBackendTests(unittest.TestCase):
 
     def test_invalid_action(self):
         with self.assertRaises(ValueError):
-            validate_action('上', 'low')
+            validate_action('斜', 'low')
         with self.assertRaises(ValueError):
             validate_action('前', 'turbo')
 
@@ -48,3 +48,11 @@ class SimulatedBackendTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NewDirectionsTests(unittest.TestCase):
+    def test_sim_maps_new_directions(self):
+        for d, expected in (('上', 'up'), ('下', 'down'), ('左转', 'turn_left'), ('右转', 'turn_right')):
+            rov = FakeRov()
+            SimulatedBackend(rov=rov, total_time=2, control_frequency=1, sleep=lambda s: None).execute(d, 'low')
+            self.assertEqual(rov.calls[0][0], expected)

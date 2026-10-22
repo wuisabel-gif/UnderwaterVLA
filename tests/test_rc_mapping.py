@@ -44,7 +44,7 @@ class RcMappingTests(unittest.TestCase):
         ac.enable_depth_hold = False
         ac.enable_heading_hold = False
         ac.mpc_controller.is_active = True
-        ac.mpc_controller.compute_control = lambda: {'throttle': 0.5, 'yaw': 0.0}
+        ac.mpc_controller.compute_control = lambda: {'forward': 0.5, 'lateral': 0.0, 'throttle': 0.0, 'yaw': 0.0}
         ac._safety_check = lambda: None
         ac._execute_auto_control()
         self.assertAlmostEqual(ac.control_outputs['forward'], 0.5)
@@ -62,3 +62,27 @@ class RcMappingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActionAxisTests(unittest.TestCase):
+    def axis_for(self, direction):
+        ac = AutoController(CONFIG)
+        ac.enable_depth_hold = ac.enable_heading_hold = False
+        ac._safety_check = lambda: None
+        ac.mpc_controller.set_vla_command(direction, 'medium')
+        m = ac.mpc_controller  # profile ramps from 0, so key off the commanded target sign
+        m._compute_translational_control = lambda ref: 0.7 * (m.target_velocity > 0) - 0.7 * (m.target_velocity < 0)
+        m._compute_rotational_control = lambda ref: 0.9 if m.target_angular_rate > 0 else -0.9
+        ac._execute_auto_control()
+        return {k: v for k, v in ac.control_outputs.items() if v}
+
+    def test_each_direction_hits_one_axis(self):
+        self.assertEqual(self.axis_for('前'), {'forward': 0.7})
+        self.assertEqual(self.axis_for('后'), {'forward': -0.7})
+        self.assertEqual(self.axis_for('右'), {'lateral': 0.7})
+        self.assertEqual(self.axis_for('左'), {'lateral': -0.7})
+        self.assertEqual(self.axis_for('上'), {'throttle': 0.7})
+        self.assertEqual(self.axis_for('下'), {'throttle': -0.7})
+        self.assertEqual(self.axis_for('右转'), {'yaw': 0.9})
+        self.assertEqual(self.axis_for('左转'), {'yaw': -0.9})
+        self.assertEqual(self.axis_for('停'), {})

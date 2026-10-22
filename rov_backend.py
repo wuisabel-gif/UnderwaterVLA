@@ -10,7 +10,7 @@ ROV 执行后端抽象层。
     backend.stop()
     backend.close()
 
-方向与速度使用小脑的原始枚举：方向 ['前','后','左','右','停']，
+方向与速度使用小脑的原始枚举：方向 ['前','后','左','右','上','下','左转','右转','停']（左/右为平移，左转/右转为原地转向），
 速度 ['low','medium','high','stop']。
 """
 import os
@@ -21,7 +21,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-DIRECTIONS = ('前', '后', '左', '右', '停')
+DIRECTIONS = ('前', '后', '左', '右', '上', '下', '左转', '右转', '停')
 SPEEDS = ('low', 'medium', 'high', 'stop')
 
 QGC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'QGC')
@@ -59,7 +59,8 @@ def validate_action(direction: str, speed: str):
 # 模拟后端：保留原项目的"5 秒先加速再减速"梯形曲线
 # ---------------------------------------------------------------------------
 
-SIM_DIRECTION_MAP = {'前': 'forward', '后': 'backward', '左': 'left', '右': 'right', '停': 'stop'}
+SIM_DIRECTION_MAP = {'前': 'forward', '后': 'backward', '左': 'left', '右': 'right', '上': 'up', '下': 'down',
+                     '左转': 'turn_left', '右转': 'turn_right', '停': 'stop'}
 SIM_SPEED_MAP = {'low': 100, 'medium': 200, 'high': 300, 'stop': 0}
 
 
