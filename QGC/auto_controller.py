@@ -450,12 +450,16 @@ class AutoController:
         """安全检查"""
         current_time = time.time()
         
-        # 深度限制检查
+        # 深度限制检查。深度为负值，越深越小。
+        # 只有超过最大深度才紧急停止；比 min_depth 浅（包括水面上的 0m）只告警，
+        # 否则 ROV 在水面上就会被不断紧急停止而无法下潜。
         current_depth = getattr(self, '_current_depth', 0.0)
-        if current_depth < self.max_depth or current_depth > self.min_depth:
-            logger.warning(f"深度超出安全范围: {current_depth}m")
+        if current_depth < self.max_depth:
+            logger.warning(f"深度超出最大限制: {current_depth}m < {self.max_depth}m")
             self._emergency_stop()
             return
+        if current_depth > self.min_depth:
+            logger.debug(f"深度浅于最小限制: {current_depth}m > {self.min_depth}m")
         
         # 紧急停止超时检查
         if self.emergency_stop_time > 0 and current_time - self.emergency_stop_time > self.emergency_stop_timeout:
