@@ -68,11 +68,11 @@ The ROV control system interfaces with the ArduSub firmware to control the physi
 {
   "reasoning": "string (thought process and reasoning for the decision)",
   "action": {
-    "direction": "string (enum: ['前','后','左','右','上','下','左转','右转','停'])",
+    "direction": "string (enum: ['forward','backward','left','right','up','down','turn_left','turn_right','stop'])",
     "speed": "string (enum: ['low','medium','high','stop'])",
     "confidence": "float [0.0-1.0]"
   },
-  "status": "string (enum: ['任务中', '任务完成'])",
+  "status": "string (enum: ['in_progress', 'done'])",
   "step_completed": "boolean (optional, whether the step is completed)"
 }
 ```
@@ -87,7 +87,8 @@ cp .env.example .env   # fill in QVQMAX_API_KEY and the LM Studio endpoint
 Credentials and endpoints are read from environment variables (`QVQMAX_API_KEY`,
 `QVQMAX_API_URL`, `LMSTUDIO_API_URL`, `LMSTUDIO_MODEL`). Nothing is hardcoded.
 
-`左`/`右` strafe sideways; `左转`/`右转` yaw in place; `上`/`下` are vertical.
+`left`/`right` strafe sideways; `turn_left`/`turn_right` yaw in place; `up`/`down` are vertical.
+Old logs or a model that answers in Chinese are normalised through `rov_backend.LEGACY_DIRECTIONS` / `LEGACY_STATUS`.
 
 ## Usage
 
@@ -98,7 +99,7 @@ Credentials and endpoints are read from environment variables (`QVQMAX_API_KEY`,
 python run_vla.py --instruction exp1
 
 # USB camera + simulation (verify the camera on the bench first)
-python run_vla.py --source camera:0 --instruction "钻过呼啦圈"
+python run_vla.py --source camera:0 --instruction "Swim through the hula hoop"
 
 # BlueROV video stream + real ArduSub over MAVLink (see QGC/config.ini)
 python run_vla.py --source udp://192.168.2.1:5600 --backend ardusub --instruction exp2

@@ -11,7 +11,7 @@ import replay
 
 
 def act(d, **extra):
-    return {"action": {"direction": d, "speed": "low", "confidence": 0.9}, "status": "任务中", **extra}
+    return {"action": {"direction": d, "speed": "low", "confidence": 0.9}, "status": "in_progress", **extra}
 
 
 class FakeBrain:
@@ -39,8 +39,8 @@ class ReplayTests(unittest.TestCase):
         with open(self.log, "w", encoding="utf-8") as f:
             f.write(json.dumps({"timestamp": t("03"), "decision": {"task_plan": [1], "total_steps": 1}}) + "\n")
             f.write("not json\n")
-            f.write(json.dumps({"timestamp": t("05"), "decision": act("前", step_completed=False)}) + "\n")
-            f.write(json.dumps({"timestamp": t("15"), "decision": act("右")}) + "\n")
+            f.write(json.dumps({"timestamp": t("05"), "decision": act("forward", step_completed=False)}) + "\n")
+            f.write(json.dumps({"timestamp": t("15"), "decision": act("right")}) + "\n")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -55,7 +55,7 @@ class ReplayTests(unittest.TestCase):
 
     def test_replay_summary(self):
         cases = replay.build_cases(replay.load_log(self.log), replay.load_figs(self.fig))
-        brain = FakeBrain([act("前"), None])
+        brain = FakeBrain([act("forward"), None])
         out = replay.summarize(replay.replay(cases, "go", brain), dry_run=False)
         self.assertIn("valid JSON: 1/2", out)
         self.assertIn("direction agreement: 1/1", out)

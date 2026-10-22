@@ -1,217 +1,311 @@
-# ArduSub ROV 自动控制系统
+# ArduSub ROV Automatic Control System
 
-这是一个用于控制ArduSub水下ROV的Python自动控制系统，可以替代外接手柄，实现智能算法自动控制。
+A Python control system for ArduSub underwater ROVs. It replaces an external joystick and lets an algorithm, such as a vision-language-action (VLA) model, drive the vehicle.
 
-## 功能特性
+## Features
 
-- **MAVLink通信**: 通过MAVLink协议与ArduSub通信
-- **虚拟手柄**: 使用键盘模拟手柄输入
-- **自动控制**: 内置PID控制器，支持深度保持、航向保持等
-- **安全保护**: 深度限制、紧急停止等安全功能
-- **模式切换**: 支持手动控制和自动控制模式切换
-- **可扩展**: 易于集成自定义智能算法
+- **MAVLink communication**: talks to ArduSub over the MAVLink protocol
+- **Virtual joystick**: simulates joystick input from the keyboard
+- **Automatic control**: built-in PID and MPC controllers with depth hold and heading hold
+- **Safety**: depth limits, emergency stop and related protections
+- **Mode switching**: switch between manual and automatic control
+- **VLA command execution**: executes discrete motion commands from a vision-language-action model
+- **Extensible**: easy to plug in your own control algorithms
 
-## 系统架构
+## System Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   虚拟手柄模块   │    │   主控制器      │    │  MAVLink接口    │
-│ VirtualJoystick │───▶│ MainController  │───▶│ MavlinkInterface│
+│ Virtual Joystick │───▶│ Main Controller │───▶│ MAVLink Interface│
+│ VirtualJoystick │    │ MainController  │    │ MavlinkInterface│
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │
                                 ▼
                        ┌─────────────────┐
-                       │   自动控制器    │
+                       │ Auto Controller │
                        │ AutoController  │
                        └─────────────────┘
 ```
 
-## 安装要求
+## MPC Controller
 
-### 系统要求
+The system includes a zero-data motion execution module based on Model Predictive Control (MPC) that executes discrete VLA motion commands:
+
+### Motion Axes
+Each VLA direction maps to one ArduSub RC channel; only that axis is driven for the duration of the command:
+- **`forward` / `backward`**: fore/aft (channel 5)
+- **`left` / `right`**: strafe (channel 6)
+- **`up` / `down`**: vertical (channel 3, overrides depth hold while active)
+- **`turn_left` / `turn_right`**: yaw in place (channel 4, added on top of heading hold)
+- **`stop`**: zero output
+
+Translational directions follow a constrained time-optimal velocity trajectory; turns follow the same shape as an angular-rate trajectory. Speed is one of `low`, `medium`, `high`.
+
+### Hydrodynamic Compensation
+- Online estimate of translational and rotational drag
+- Drag compensation in the control law
+- Adapts to different underwater environments
+
+### Timing
+- Strict 1-second motion execution window per command
+- 20 ms control update interval
+- Reference trajectory tracking
+
+## Installation
+
+### Requirements
 - Python 3.7+
 - Windows/Linux/macOS
 
-### 依赖包
+### Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 主要依赖
-- `pymavlink`: MAVLink通信
-- `pygame`: 虚拟手柄支持
-- `keyboard`: 键盘监听
-- `numpy`: 数值计算
-- `opencv-python`: 计算机视觉支持（可选）
+### Main Dependencies
+- `pymavlink`: MAVLink communication
+- `pygame`: virtual joystick support
+- `keyboard`: keyboard monitoring
+- `numpy`: numerical computing
+- `opencv-python`: computer vision support (optional)
 
-## 配置说明
+## Configuration
 
-### 连接配置 (config.ini)
+### config.ini
 ```ini
 [Connection]
-connection_type = udp          # 连接类型: udp 或 serial
-udp_host = 127.0.0.1         # UDP主机地址
-udp_port = 14550              # UDP端口
-serial_port = COM3            # 串口端口
-baud_rate = 115200            # 波特率
+connection_type = udp          # Connection type: udp or serial
+udp_host = 127.0.0.1           # UDP host address
+udp_port = 14445               # UDP port
+serial_port = COM3             # Serial port
+baud_rate = 115200             # Baud rate
 
 [Control]
-control_frequency = 10        # 控制频率 (Hz)
-max_throttle = 100            # 最大油门百分比
-max_yaw_rate = 45             # 最大偏航角速度 (度/秒)
-max_pitch_angle = 30          # 最大俯仰角 (度)
-max_roll_angle = 30           # 最大横滚角 (度)
+control_frequency = 10         # Control frequency (Hz)
+max_throttle = 100             # Maximum throttle percentage
+max_yaw_rate = 45              # Maximum yaw rate (deg/s)
+max_pitch_angle = 30           # Maximum pitch angle (deg)
+max_roll_angle = 30            # Maximum roll angle (deg)
 
 [AutoControl]
-enable_depth_hold = true      # 启用深度保持
-target_depth = -2.0           # 目标深度 (米)
-depth_tolerance = 0.1         # 深度容差 (米)
-enable_heading_hold = true    # 启用航向保持
-target_heading = 0            # 目标航向 (度)
-heading_tolerance = 5         # 航向容差 (度)
+enable_depth_hold = true       # Enable depth hold
+target_depth = -2.0            # Target depth (m)
+depth_tolerance = 0.1          # Depth tolerance (m)
+enable_heading_hold = true     # Enable heading hold
+target_heading = 0             # Target heading (deg)
+heading_tolerance = 5          # Heading tolerance (deg)
 
 [Safety]
-emergency_stop_timeout = 5.0  # 紧急停止超时 (秒)
-max_depth = -10.0             # 最大深度限制 (米)
-min_depth = -0.5              # 最小深度限制 (米)
+emergency_stop_timeout = 5.0   # Emergency stop timeout (s)
+max_depth = -10.0              # Maximum depth limit (m)
+min_depth = -0.5               # Minimum depth limit (m)
 ```
 
-## 使用方法
+The `[MPC]` section is optional; the defaults below are used when it is absent:
+```ini
+[MPC]
+beta = 1.0                     # Tracking error weight
+gamma = 0.1                    # Control effort weight
+delta = 0.05                   # Hydrodynamic drag weight
+mass = 10.0                    # Vehicle mass (kg)
+inertia = 0.5                  # Moment of inertia (kg·m²)
+translational_drag_coeff = 5.0 # Translational drag coefficient
+rotational_drag_coeff = 0.1    # Rotational drag coefficient
+```
 
-### 1. 基本启动
+## Usage
+
+### 1. Basic Startup
 ```bash
 python main_controller.py
 ```
 
-### 2. 运行示例
+### 2. Running the Examples
 ```bash
 python example_usage.py
 ```
 
-### 3. 手动控制
-启动后默认进入手动控制模式：
-- **W/S**: 俯仰控制（前/后）
-- **A/D**: 横滚控制（左/右）
-- **Q/E**: 偏航控制（左/右）
-- **空格/Shift**: 油门控制（上/下）
-- **R**: 重置所有控制
-- **ESC**: 紧急停止
-- **M**: 切换手动/自动模式
+### 3. Manual Control
+The system starts in manual control mode:
+- **W/S**: pitch (forward/backward)
+- **A/D**: roll (left/right)
+- **Q/E**: yaw (left/right)
+- **Space/Shift**: throttle (up/down)
+- **R**: reset all controls
+- **ESC**: emergency stop
+- **M**: toggle manual/automatic mode
 
-### 4. 自动控制
+### 4. Automatic Control
 ```python
 from main_controller import ROVMainController
 
-# 创建控制器
+# Create the controller
 controller = ROVMainController()
 
-# 启动
+# Start
 controller.start()
 
-# 切换到自动模式
+# Switch to automatic mode
 controller.set_control_mode('auto')
 
-# 设置目标
-controller.set_target_depth(-2.0)    # 目标深度2米
-controller.set_target_heading(90.0)  # 目标航向90度
+# Set targets
+controller.set_target_depth(-2.0)    # target depth 2 m
+controller.set_target_heading(90.0)  # target heading 90 degrees
 
-# 关闭
+# Shut down
 controller.shutdown()
 ```
 
-## 自定义算法集成
+### 5. Executing VLA Commands
+```python
+# Execute a VLA command (from a vision-language-action model)
+vla_command = {
+    "reasoning": "avoid obstacle",
+    "action": {
+        "direction": "forward",   # forward/backward/left/right/up/down/turn_left/turn_right/stop
+        "speed": "medium",        # low/medium/high
+        "confidence": 0.9
+    },
+    "status": "in progress"
+}
 
-### 1. 继承AutoController类
+controller.execute_vla_command(vla_command)
+```
+
+## How the MPC Controller Works
+
+### Time-Constrained Motion Trajectory
+For a translational command the controller generates this velocity reference:
+```
+v(t) = 
+  v_cmd * min(5t, 1)        0 ≤ t < 0.2s
+  v_cmd                     0.2 ≤ t < 0.5s
+  v_cmd * max(1-2(t-0.5), 0) 0.5 ≤ t ≤ 1s
+```
+
+For a turn command the controller generates the same shape as an angular-rate reference.
+
+### Hydrodynamics-Aware MPC
+The controller computes thrust by solving:
+```
+min ∫[0,1] {β||v-v_ref||² + γ||τ||² + δ||F_drag,v||²} dt  (translational)
+min ∫[0,1] {β||θ-θ_ref||² + γ||τ||² + δ||τ_drag,r||²} dt  (rotational)
+```
+
+Drag is modelled as:
+```
+F_drag,v = D_v * v|v|
+τ_drag,r = D_r * r|r|
+```
+
+### Online Drag Estimation
+The drag coefficients are estimated online with:
+```
+D_v = (τ_v - M*v_dot) / (v|v|)
+D_r = (τ_r - I_z*r_dot) / (r|r|)
+```
+
+The current implementation is a simplified proportional controller with drag compensation; the three translational axes share the forward velocity feedback, so lateral and vertical motion degrade to open loop when no dedicated velocity measurement is available.
+
+## Custom Algorithm Integration
+
+### 1. Subclass AutoController
 ```python
 from auto_controller import AutoController
 
 class MyCustomController(AutoController):
     def __init__(self, config_file='config.ini'):
         super().__init__(config_file)
-        # 添加自定义初始化代码
+        # Custom initialization
     
     def _execute_auto_control(self):
-        # 实现您的智能算法
-        # 例如：基于视觉的目标跟踪
-        # 例如：基于声纳的障碍物避免
+        # Implement your algorithm here
+        # e.g. vision-based target tracking
+        # e.g. sonar-based obstacle avoidance
         pass
 ```
 
-### 2. 集成到主控制器
+### 2. Plug It Into the Main Controller
 ```python
 from main_controller import ROVMainController
 
 class CustomROVController(ROVMainController):
     def __init__(self, config_file='config.ini'):
         super().__init__(config_file)
-        # 替换为自定义控制器
+        # Swap in the custom controller
         self.auto_controller = MyCustomController(config_file)
 ```
 
-## 安全注意事项
+## Safety Notes
 
-1. **深度限制**: 系统会自动限制ROV的最大和最小深度
-2. **紧急停止**: 按ESC键或检测到异常时自动执行紧急停止
-3. **连接监控**: 自动检测MAVLink连接状态，连接丢失时自动重连
-4. **超时保护**: 紧急停止后自动恢复控制
+1. **Depth limit**: exceeding `max_depth` triggers an emergency stop; being shallower than `min_depth` only logs, so the ROV can dive from the surface
+2. **Emergency stop**: triggered by ESC or when an anomaly is detected
+3. **Connection monitoring**: the MAVLink link is monitored and reconnected when lost
+4. **Timeout protection**: normal control resumes after the emergency stop timeout
 
-## 故障排除
+## Troubleshooting
 
-### 常见问题
+### Common Issues
 
-1. **MAVLink连接失败**
-   - 检查QGroundControl是否运行
-   - 确认UDP端口设置正确
-   - 检查防火墙设置
+1. **MAVLink connection fails**
+   - Check that QGroundControl is running
+   - Confirm the UDP port settings
+   - Check firewall settings
 
-2. **控制无响应**
-   - 确认ROV已解锁
-   - 检查控制模式设置
-   - 查看日志文件
+2. **Controls do not respond**
+   - Confirm the ROV is armed
+   - Check the control mode
+   - Check the log file
 
-3. **自动控制不稳定**
-   - 调整PID参数
-   - 检查传感器数据
-   - 确认目标值设置合理
+3. **Unstable automatic control**
+   - Tune the PID gains
+   - Check the sensor data
+   - Confirm the targets are reasonable
 
-### 日志文件
-系统运行时会生成 `rov_control.log` 日志文件，包含详细的运行信息和错误记录。
+### Log File
+The system writes `rov_control.log` while running, with detailed runtime information and errors.
 
-## 开发说明
+## Development
 
-### 代码结构
+### Code Structure
 ```
 QGC/
-├── requirements.txt          # 依赖包列表
-├── config.ini               # 配置文件
-├── mavlink_interface.py     # MAVLink通信接口
-├── auto_controller.py       # 自动控制器
-├── virtual_joystick.py      # 虚拟手柄
-├── main_controller.py       # 主控制器
-├── example_usage.py         # 使用示例
-└── README.md                # 说明文档
+├── requirements.txt           # Dependency list
+├── config.ini                 # Configuration file
+├── mavlink_interface.py       # MAVLink communication interface
+├── auto_controller.py         # Automatic controller (PID + MPC)
+├── virtual_joystick.py        # Virtual joystick
+├── main_controller.py         # Main controller
+├── example_usage.py           # Usage examples
+├── joy.py                     # vJoy virtual gamepad driver (Windows)
+├── RovController.py           # Simulated ROV controller (prints only)
+├── rov_movement.py            # Timed movement helper on top of RovController
+├── debug_mavlink.py           # MAVLink message monitor
+├── test_ardusub_connection.py # Connection and control command test
+├── test_vjoy_controller.py    # vJoy device test
+└── README.md                  # Documentation
 ```
 
-### 扩展开发
-1. **添加新的控制算法**: 继承AutoController类
-2. **集成新的传感器**: 修改MavlinkInterface类
-3. **自定义控制界面**: 扩展VirtualJoystick类
-4. **添加新的安全功能**: 在主控制器中添加
+### Extending
+1. **New control algorithms**: subclass AutoController
+2. **New sensors**: extend MavlinkInterface
+3. **Custom control interface**: extend VirtualJoystick
+4. **New safety features**: add them to the main controller
 
-## 许可证
+## License
 
-本项目采用MIT许可证，详见LICENSE文件。
+This project is licensed under the MIT License. See the LICENSE file for details.
 
-## 贡献
+## Contributing
 
-欢迎提交Issue和Pull Request来改进这个项目。
+Issues and pull requests are welcome.
 
-## 联系方式
+## Contact
 
-如有问题或建议，请通过以下方式联系：
-- 提交GitHub Issue
-- 发送邮件至项目维护者
+Questions or suggestions:
+- Open a GitHub issue
+- Email the project maintainers
 
 ---
 
-**注意**: 使用本系统控制ROV时，请确保在安全的环境中进行，并遵守相关的水下操作规范。
+**Note**: when using this system to control an ROV, make sure you are in a safe environment and follow the relevant underwater operation rules.
