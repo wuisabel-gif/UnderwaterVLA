@@ -1,5 +1,7 @@
 # Dual Brain VLA Controller
 
+[![CI](https://github.com/wuisabel-gif/UnderwaterVLA/actions/workflows/ci.yml/badge.svg)](https://github.com/wuisabel-gif/UnderwaterVLA/actions/workflows/ci.yml)
+
 Reference implementation of the dual-brain underwater VLA controller described in
 [UnderwaterVLA (arXiv:2509.22441)](https://arxiv.org/abs/2509.22441). The original
 anonymous code drop is at <https://anonymous.4open.science/r/UnderwaterVLA-8FC8>;
@@ -137,3 +139,8 @@ and model latency.
 ```bash
 python3 -m unittest discover -s tests
 ```
+
+`tests/test_mavlink_integration.py` drives `ArduSubBackend` over a real MAVLink UDP link
+against a fake vehicle that answers heartbeats and records `RC_CHANNELS_OVERRIDE`, so the
+whole QGC path is checked in CI without an ArduPilot build. It is skipped when
+`pymavlink` is not installed.
