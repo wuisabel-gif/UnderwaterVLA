@@ -2,10 +2,11 @@
 
 [![CI](https://github.com/wuisabel-gif/UnderwaterVLA/actions/workflows/ci.yml/badge.svg)](https://github.com/wuisabel-gif/UnderwaterVLA/actions/workflows/ci.yml)
 
-Reference implementation of the dual-brain underwater VLA controller described in
-[UnderwaterVLA (arXiv:2509.22441)](https://arxiv.org/abs/2509.22441). The original
-anonymous code drop is at <https://anonymous.4open.science/r/UnderwaterVLA-8FC8>;
-this repository continues development from it.
+Community continuation of the dual-brain underwater VLA controller from the paper
+[UnderwaterVLA (arXiv:2509.22441)](https://arxiv.org/abs/2509.22441). The code here
+started from the authors' anonymous release and has since been wired to a camera feed
+and the ArduSub stack, made fully autonomous, tested, and translated to English.
+See [Attribution](#attribution-and-license) below.
 
 This project implements a dual-brain architecture for controlling an underwater robot using vision-language-action (VLA) models. It consists of two main components: a "Big Brain" for high-level task planning and a "Small Brain" for low-level execution decisions.
 
@@ -144,3 +145,16 @@ python3 -m unittest discover -s tests
 against a fake vehicle that answers heartbeats and records `RC_CHANNELS_OVERRIDE`, so the
 whole QGC path is checked in CI without an ArduPilot build. It is skipped when
 `pymavlink` is not installed.
+
+## Attribution and license
+
+- **Paper:** *UnderwaterVLA*, [arXiv:2509.22441](https://arxiv.org/abs/2509.22441). All
+  credit for the dual-brain design, the prompts and the original experiments goes to its authors.
+- **Original code:** the anonymous release at
+  <https://anonymous.4open.science/r/UnderwaterVLA-8FC8>. The initial commit of this
+  repository is that release with the hardcoded API key removed.
+- **This repository:** everything after the initial commit is independent work and is
+  released under the [MIT License](LICENSE). The anonymous release ships no license file
+  (its QGC README states MIT); if you are one of the original authors and would like
+  different attribution or licensing, please open an issue.
+- Not affiliated with or endorsed by the paper's authors.
