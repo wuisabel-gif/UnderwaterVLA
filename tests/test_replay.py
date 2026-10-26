@@ -105,6 +105,22 @@ class ReplayTests(unittest.TestCase):
         self.assertIn("[0.7,0.9)   0  -", lines)
         self.assertIn("distinct confidence values: 4", lines[-1])
 
+    def test_grey_frames_replace_images(self):
+        cases = replay.build_cases(replay.load_log(self.log), replay.load_figs(self.fig))
+
+        class ImgBrain(FakeBrain):
+            def call_lmstudio_api(self, img1, instruction, plan, step, img2):
+                self.calls.append((img1, img2, instruction))
+                return self.answers.pop(0)
+
+        brain = ImgBrain([act("forward"), act("right")])
+        replay.replay(cases, "go", brain, grey_frames=True)
+        g = replay.grey_frame_b64()
+        self.assertEqual(brain.calls[0][:2], (g, g))
+        brain = ImgBrain([act("forward"), act("right")])
+        replay.replay(cases, "go", brain)
+        self.assertNotEqual(brain.calls[0][0], g)
+
     def test_dry_run_counts(self):
         out = replay.main(["--log", self.log, "--fig-dir", self.fig, "--dry-run"])
         self.assertEqual(out, 0)
