@@ -142,15 +142,14 @@ class MPCController:
         """Generate the translational reference trajectory"""
         profile = []
         for i in range(self.steps):
-            t = i * self.control_interval
-            if 0 <= t < 0.2:
-                v_ref = v_cmd * min(5 * t, 1)
-            elif 0.2 <= t < 0.5:
+            # Ramp up over the first 20% of the horizon, cruise to 50%, ramp down to 0 at the end.
+            t = i * self.control_interval / self.control_horizon
+            if t < 0.2:
+                v_ref = v_cmd * t / 0.2
+            elif t < 0.5:
                 v_ref = v_cmd
-            elif 0.5 <= t <= 1:
-                v_ref = v_cmd * max(1 - 2 * (t - 0.5), 0)
             else:
-                v_ref = 0.0
+                v_ref = v_cmd * max(1 - (t - 0.5) / 0.5, 0)
             profile.append(v_ref)
         return profile
 
@@ -158,15 +157,14 @@ class MPCController:
         """Generate the rotational reference trajectory"""
         profile = []
         for i in range(self.steps):
-            t = i * self.control_interval
-            if 0 <= t < 0.2:
-                r_ref = r_cmd * min(5 * t, 1)
-            elif 0.2 <= t < 0.5:
+            # Ramp up over the first 20% of the horizon, cruise to 50%, ramp down to 0 at the end.
+            t = i * self.control_interval / self.control_horizon
+            if t < 0.2:
+                r_ref = r_cmd * t / 0.2
+            elif t < 0.5:
                 r_ref = r_cmd
-            elif 0.5 <= t <= 1:
-                r_ref = r_cmd * max(1 - 2 * (t - 0.5), 0)
             else:
-                r_ref = 0.0
+                r_ref = r_cmd * max(1 - (t - 0.5) / 0.5, 0)
             profile.append(r_ref)
         return profile
 
