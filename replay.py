@@ -10,6 +10,7 @@ Offline replay: re-run the small brain over decision_log.json and the screenshot
   python replay.py --calibration                 # is self-reported confidence predictive of agreement?
   python replay.py --blank-instruction           # ablation: no language, only images
   python replay.py --grey-frames                 # ablation: no vision, only language
+  python replay.py --models qwen2.5-vl-7b-instruct,qwen2.5-vl-3b-instruct   # size vs agreement/latency
 
 Each small-brain decision is paired with the two most recent screenshots before it (by filename timestamp).
 """
@@ -179,6 +180,20 @@ def calibration_table(results):
     return lines, pairs
 
 
+def model_row(results):
+    """Compact per-model metrics for a comparison table."""
+    ran = [r for r in results if not r.get("skipped")]
+    valid = [r for r in ran if isinstance(r["new"], dict) and "action" in r["new"]]
+    agree = [r for r in valid if r["new"]["action"].get("direction") == logged_dir(r)]
+    lat = [r["latency"] for r in ran if r["latency"] is not None]
+    return {"valid": len(valid) / len(ran) if ran else 0.0,
+            "agree": len(agree) / len(valid) if valid else 0.0,
+            "osc": oscillation_rate([r["new"]["action"].get("direction") for r in valid]),
+            "done": completion_index(results),
+            "lat_mean": statistics.mean(lat) if lat else 0.0,
+            "lat_max": max(lat) if lat else 0.0}
+
+
 def completion_index(results):
     """1-based index of the first replayed decision that reports status done, or None."""
     for i, r in enumerate(results, 1):
@@ -227,6 +242,7 @@ def main(argv=None):
                    help="which task plan the executor sees: the logged cloud plan, none, or a generic fixed plan")
     p.add_argument("--blank-instruction", action="store_true", help="send an empty instruction (language ablation)")
     p.add_argument("--grey-frames", action="store_true", help="send flat grey images (vision ablation)")
+    p.add_argument("--models", help="comma-separated LM Studio model names to compare on the same cases")
     p.add_argument("--calibration", action="store_true", help="print agreement rate per confidence bucket")
     p.add_argument("--history", help="comma-separated history lengths to sweep, e.g. 0,3,5,10 (default: model default)")
     p.add_argument("--out", help="write per-case results to a JSON file")
@@ -240,6 +256,17 @@ def main(argv=None):
         brain = SmallBrain.__new__(SmallBrain)
         BaseBrain.__init__(brain)  # ponytail: skip SmallBrain.__init__, replay needs no ROV backend
         instruction = "" if a.blank_instruction else brain.preset_instructions.get(a.instruction, a.instruction)
+        if a.models:
+            rows = []
+            for m in a.models.split(","):
+                brain.LMSTUDIO_MODEL = m.strip()
+                rs = replay(cases, instruction, brain, a.plan, grey_frames=a.grey_frames)
+                rows.append((m.strip(), model_row(rs)))
+            print(f"{'model':40s} valid  agree  osc   done  lat_mean  lat_max")
+            for m, r in rows:
+                print(f"{m:40s} {r['valid']:5.2f}  {r['agree']:5.2f}  {r['osc']:4.2f}  {str(r['done']):>4s}  "
+                      f"{r['lat_mean']:8.2f}  {r['lat_max']:7.2f}")
+            return 0
         if a.history:
             for n in (int(x) for x in a.history.split(",")):
                 print(f"\n=== history length {n} ===")

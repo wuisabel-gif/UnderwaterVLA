@@ -121,6 +121,18 @@ class ReplayTests(unittest.TestCase):
         replay.replay(cases, "go", brain)
         self.assertNotEqual(brain.calls[0][0], g)
 
+    def test_model_row(self):
+        results = [{"new": act("forward"), "decision": act("forward"), "latency": 1.0},
+                   {"new": act("backward"), "decision": act("forward"), "latency": 3.0},
+                   {"new": None, "decision": act("stop"), "latency": 2.0},
+                   {"new": None, "decision": act("stop"), "latency": None, "skipped": "no frames"}]
+        row = replay.model_row(results)
+        self.assertAlmostEqual(row["valid"], 2 / 3)
+        self.assertAlmostEqual(row["agree"], 0.5)
+        self.assertAlmostEqual(row["osc"], 1.0)
+        self.assertIsNone(row["done"])
+        self.assertEqual((row["lat_mean"], row["lat_max"]), (2.0, 3.0))
+
     def test_dry_run_counts(self):
         out = replay.main(["--log", self.log, "--fig-dir", self.fig, "--dry-run"])
         self.assertEqual(out, 0)
