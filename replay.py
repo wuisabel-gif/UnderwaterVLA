@@ -4,6 +4,8 @@ Offline replay: re-run the small brain over decision_log.json and the screenshot
 
   python replay.py --instruction exp1            # re-query the small brain, report agreement / JSON validity / latency
   python replay.py --instruction exp1 --dry-run  # only summarise the decisions already in the log
+  python replay.py --plan none                   # ablation: executor without the cloud plan
+  python replay.py --plan fixed                  # ablation: a generic plan that says nothing task-specific
 
 Each small-brain decision is paired with the two most recent screenshots before it (by filename timestamp).
 """
@@ -18,7 +20,20 @@ import time
 from collections import Counter
 from datetime import datetime
 
+from rov_backend import LEGACY_DIRECTIONS
+
 FIG_TS_FMT = "%Y-%m-%d_%H-%M-%S"
+
+OPPOSITES = {("forward", "backward"), ("left", "right"), ("up", "down"), ("turn_left", "turn_right")}
+
+# A plan with the right shape and no task content, to test whether the cloud brain's
+# content matters or only the presence of a plan in the prompt.
+FIXED_PLAN = {"reasoning": "Generic plan.",
+              "task_plan": [{"step": 1, "description": "Look for the target and move toward it.",
+                             "target_object": "target", "obstacle_to_avoid": "any obstacle", "confidence": 0.5},
+                            {"step": 2, "description": "Stop when the target is reached.",
+                             "target_object": "target", "obstacle_to_avoid": "any obstacle", "confidence": 0.5}],
+              "total_steps": 2, "estimated_completion_time": "unknown"}
 
 
 def load_log(path):
@@ -75,7 +90,12 @@ def b64(path):
         return base64.b64encode(f.read()).decode()
 
 
-def replay(cases, instruction, brain):
+def plan_for(case, mode):
+    """mode: 'logged' (what the cloud brain produced), 'none' (no plan), 'fixed' (FIXED_PLAN)."""
+    return {"logged": case["plan"], "none": None, "fixed": FIXED_PLAN}[mode]
+
+
+def replay(cases, instruction, brain, plan_mode="logged"):
     """Re-query the small brain and return a result dict per case."""
     results = []
     for c in cases:
@@ -83,14 +103,37 @@ def replay(cases, instruction, brain):
             results.append({**c, "new": None, "latency": None, "skipped": "no frames"})
             continue
         imgs = [b64(p) for p in c["frames"]]
+        plan = plan_for(c, plan_mode)
         t0 = time.time()
-        new = brain.call_lmstudio_api(imgs[0], instruction, c["plan"], c["step"], imgs[1])
+        new = brain.call_lmstudio_api(imgs[0], instruction, plan, c["step"] if plan else None, imgs[1])
         results.append({**c, "new": new, "latency": time.time() - t0})
     return results
 
 
+def logged_dir(r):
+    """Logged direction, with pre-translation Chinese tokens normalised to English."""
+    d = r["decision"]["action"].get("direction")
+    return LEGACY_DIRECTIONS.get(d, d)
+
+
+def oscillation_rate(directions):
+    """Fraction of consecutive pairs that are opposite moves (forward then backward, ...)."""
+    pairs = list(zip(directions, directions[1:]))
+    if not pairs:
+        return 0.0
+    return sum(1 for a, b in pairs if (a, b) in OPPOSITES or (b, a) in OPPOSITES) / len(pairs)
+
+
+def completion_index(results):
+    """1-based index of the first replayed decision that reports status done, or None."""
+    for i, r in enumerate(results, 1):
+        if isinstance(r.get("new"), dict) and r["new"].get("status") == "done":
+            return i
+    return None
+
+
 def summarize(results, dry_run):
-    old_dirs = Counter(r["decision"]["action"].get("direction") for r in results)
+    old_dirs = Counter(logged_dir(r) for r in results)
     confs = [r["decision"]["action"].get("confidence") for r in results
              if isinstance(r["decision"]["action"].get("confidence"), (int, float))]
     lines = [f"cases: {len(results)}",
@@ -100,15 +143,21 @@ def summarize(results, dry_run):
         return "\n".join(lines)
     ran = [r for r in results if not r.get("skipped")]
     valid = [r for r in ran if isinstance(r["new"], dict) and "action" in r["new"]]
-    agree = [r for r in valid if r["new"]["action"].get("direction") == r["decision"]["action"].get("direction")]
+    agree = [r for r in valid if r["new"]["action"].get("direction") == logged_dir(r)]
     lat = [r["latency"] for r in ran if r["latency"] is not None]
+    new_dirs = [r["new"]["action"].get("direction") for r in valid]
+    done_at = completion_index(results)
     lines += [f"replayed: {len(ran)} (skipped {len(results) - len(ran)} without frames)",
               f"valid JSON: {len(valid)}/{len(ran)}",
               f"direction agreement: {len(agree)}/{len(valid)}",
+              f"new directions: {dict(Counter(new_dirs))}",
+              f"oscillation rate: new {oscillation_rate(new_dirs):.2f} / logged "
+              f"{oscillation_rate([logged_dir(r) for r in results]):.2f}",
+              f"first 'done' at decision: {done_at if done_at else 'never'}",
               f"latency s: mean {statistics.mean(lat):.2f} max {max(lat):.2f}" if lat else "latency: n/a"]
     for r in valid:
         if r not in agree:
-            lines.append(f"  mismatch @{r['ts']:.0f}: logged {r['decision']['action'].get('direction')} "
+            lines.append(f"  mismatch @{r['ts']:.0f}: logged {logged_dir(r)} "
                          f"-> new {r['new']['action'].get('direction')}")
     return "\n".join(lines)
 
@@ -119,6 +168,8 @@ def main(argv=None):
     p.add_argument("--fig-dir", default="FIG")
     p.add_argument("--instruction", "-i", default="exp1", help="instruction or preset name (exp1/exp2/exp3)")
     p.add_argument("--dry-run", action="store_true", help="do not call the model, only summarise the log")
+    p.add_argument("--plan", choices=["logged", "none", "fixed"], default="logged",
+                   help="which task plan the executor sees: the logged cloud plan, none, or a generic fixed plan")
     p.add_argument("--out", help="write per-case results to a JSON file")
     a = p.parse_args(argv)
 
@@ -130,7 +181,7 @@ def main(argv=None):
         brain = SmallBrain.__new__(SmallBrain)
         BaseBrain.__init__(brain)  # ponytail: skip SmallBrain.__init__, replay needs no ROV backend
         instruction = brain.preset_instructions.get(a.instruction, a.instruction)
-        results = replay(cases, instruction, brain)
+        results = replay(cases, instruction, brain, a.plan)
     print(summarize(results, a.dry_run))
     if a.out:
         with open(a.out, "w", encoding="utf-8") as f:

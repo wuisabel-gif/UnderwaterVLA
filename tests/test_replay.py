@@ -61,6 +61,21 @@ class ReplayTests(unittest.TestCase):
         self.assertIn("direction agreement: 1/1", out)
         self.assertEqual(len(brain.calls), 2)
 
+    def test_plan_modes(self):
+        cases = replay.build_cases(replay.load_log(self.log), replay.load_figs(self.fig))
+        for mode, expect in (("logged", cases[0]["plan"]), ("none", None), ("fixed", replay.FIXED_PLAN)):
+            brain = FakeBrain([act("forward"), act("forward")])
+            replay.replay(cases, "go", brain, plan_mode=mode)
+            self.assertEqual(brain.calls[0][0], expect, mode)
+            self.assertEqual(brain.calls[0][1], None if expect is None else 1)
+
+    def test_oscillation_and_completion(self):
+        self.assertEqual(replay.oscillation_rate(["forward", "backward", "forward", "left"]), 2 / 3)
+        self.assertEqual(replay.oscillation_rate(["forward"]), 0.0)
+        results = [{"new": act("forward")}, {"new": None}, {"new": {**act("stop"), "status": "done"}}]
+        self.assertEqual(replay.completion_index(results), 3)
+        self.assertIsNone(replay.completion_index(results[:2]))
+
     def test_dry_run_counts(self):
         out = replay.main(["--log", self.log, "--fig-dir", self.fig, "--dry-run"])
         self.assertEqual(out, 0)
