@@ -93,6 +93,18 @@ class ReplayTests(unittest.TestCase):
         replay.replay(cases, "go", brain, history_len=0)
         self.assertEqual(brain.calls, [[], []])
 
+    def test_calibration_table(self):
+        def case(logged, new, conf):
+            return {"decision": act(logged), "new": {"action": {"direction": new, "confidence": conf}}}
+        results = [case("forward", "forward", 0.95), case("forward", "left", 0.92),
+                   case("left", "left", 0.6), case("left", "left", 0.3), {"decision": act("stop"), "new": None}]
+        lines, pairs = replay.calibration_table(results)
+        self.assertEqual(len(pairs), 4)
+        self.assertIn("[0.9,1.0)   2  0.50", lines)
+        self.assertIn("[0.5,0.7)   1  1.00", lines)
+        self.assertIn("[0.7,0.9)   0  -", lines)
+        self.assertIn("distinct confidence values: 4", lines[-1])
+
     def test_dry_run_counts(self):
         out = replay.main(["--log", self.log, "--fig-dir", self.fig, "--dry-run"])
         self.assertEqual(out, 0)

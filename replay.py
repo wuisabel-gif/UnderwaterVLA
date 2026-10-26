@@ -7,6 +7,7 @@ Offline replay: re-run the small brain over decision_log.json and the screenshot
   python replay.py --plan none                   # ablation: executor without the cloud plan
   python replay.py --plan fixed                  # ablation: a generic plan that says nothing task-specific
   python replay.py --history 0,3,5,10            # sweep how many prior actions the executor is shown
+  python replay.py --calibration                 # is self-reported confidence predictive of agreement?
 
 Each small-brain decision is paired with the two most recent screenshots before it (by filename timestamp).
 """
@@ -135,6 +136,36 @@ def oscillation_rate(directions):
     return sum(1 for a, b in pairs if (a, b) in OPPOSITES or (b, a) in OPPOSITES) / len(pairs)
 
 
+CONF_BUCKETS = ((0.0, 0.5), (0.5, 0.7), (0.7, 0.9), (0.9, 1.01))
+
+
+def calibration_table(results):
+    """
+    Per confidence bucket of the *new* answer: count and agreement rate with the logged action.
+
+    Agreement with the log is a proxy for correctness, since the log carries no ground
+    truth; a well-calibrated model should agree more often when it says it is confident.
+    Returns (lines, pairs) where pairs is [(confidence, agreed)] for further analysis.
+    """
+    pairs = []
+    for r in results:
+        new = r.get("new")
+        if not isinstance(new, dict) or "action" not in new:
+            continue
+        c = new["action"].get("confidence")
+        if isinstance(c, (int, float)):
+            pairs.append((float(c), new["action"].get("direction") == logged_dir(r)))
+    lines = ["confidence  n  agreement"]
+    for lo, hi in CONF_BUCKETS:
+        b = [a for c, a in pairs if lo <= c < hi]
+        lines.append(f"[{lo:.1f},{min(hi, 1.0):.1f}) {len(b):3d}  {sum(b) / len(b):.2f}" if b
+                     else f"[{lo:.1f},{min(hi, 1.0):.1f})   0  -")
+    if pairs:
+        confs = [c for c, _ in pairs]
+        lines.append(f"distinct confidence values: {len(set(confs))} (spread {min(confs):.2f}-{max(confs):.2f})")
+    return lines, pairs
+
+
 def completion_index(results):
     """1-based index of the first replayed decision that reports status done, or None."""
     for i, r in enumerate(results, 1):
@@ -181,6 +212,7 @@ def main(argv=None):
     p.add_argument("--dry-run", action="store_true", help="do not call the model, only summarise the log")
     p.add_argument("--plan", choices=["logged", "none", "fixed"], default="logged",
                    help="which task plan the executor sees: the logged cloud plan, none, or a generic fixed plan")
+    p.add_argument("--calibration", action="store_true", help="print agreement rate per confidence bucket")
     p.add_argument("--history", help="comma-separated history lengths to sweep, e.g. 0,3,5,10 (default: model default)")
     p.add_argument("--out", help="write per-case results to a JSON file")
     a = p.parse_args(argv)
@@ -200,6 +232,8 @@ def main(argv=None):
             return 0
         results = replay(cases, instruction, brain, a.plan)
     print(summarize(results, a.dry_run))
+    if a.calibration and not a.dry_run:
+        print("\n".join(calibration_table(results)[0]))
     if a.out:
         with open(a.out, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=1)
