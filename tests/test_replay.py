@@ -76,6 +76,23 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(replay.completion_index(results), 3)
         self.assertIsNone(replay.completion_index(results[:2]))
 
+    def test_history_sweep_feeds_prior_actions(self):
+        cases = replay.build_cases(replay.load_log(self.log), replay.load_figs(self.fig))
+        self.assertEqual(cases[0]["prior"], [])
+        self.assertEqual([p["direction"] for p in cases[1]["prior"]], ["forward"])
+
+        class HistBrain(FakeBrain):
+            def call_lmstudio_api(self, *a):
+                self.calls.append(list(self.history))
+                return self.answers.pop(0)
+
+        brain = HistBrain([act("forward"), act("right")])
+        replay.replay(cases, "go", brain, history_len=5)
+        self.assertEqual(brain.calls, [[], [{"direction": "forward", "speed": "low", "step_completed": False}]])
+        brain = HistBrain([act("forward"), act("right")])
+        replay.replay(cases, "go", brain, history_len=0)
+        self.assertEqual(brain.calls, [[], []])
+
     def test_dry_run_counts(self):
         out = replay.main(["--log", self.log, "--fig-dir", self.fig, "--dry-run"])
         self.assertEqual(out, 0)

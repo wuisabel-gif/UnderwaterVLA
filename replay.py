@@ -6,11 +6,13 @@ Offline replay: re-run the small brain over decision_log.json and the screenshot
   python replay.py --instruction exp1 --dry-run  # only summarise the decisions already in the log
   python replay.py --plan none                   # ablation: executor without the cloud plan
   python replay.py --plan fixed                  # ablation: a generic plan that says nothing task-specific
+  python replay.py --history 0,3,5,10            # sweep how many prior actions the executor is shown
 
 Each small-brain decision is paired with the two most recent screenshots before it (by filename timestamp).
 """
 import argparse
 import base64
+import collections
 import glob
 import json
 import os
@@ -69,17 +71,20 @@ def frames_before(figs, ts, n=2):
 
 def build_cases(log, figs):
     """Turn the log into replay cases: each small-brain decision + the task plan/step at the time + two frames."""
-    cases, plan, step = [], None, 1
+    cases, plan, step, prior = [], None, 1, []
     for ts, d in log:
         if not isinstance(d, dict):
             continue
         if "task_plan" in d:
-            plan, step = d, 1
+            plan, step, prior = d, 1, []
             continue
         if "action" not in d:
             continue
         cases.append({"ts": ts, "decision": d, "plan": plan, "step": step,
-                      "frames": frames_before(figs, ts)})
+                      "frames": frames_before(figs, ts), "prior": list(prior)})
+        a = d["action"]
+        prior.append({"direction": LEGACY_DIRECTIONS.get(a.get("direction"), a.get("direction")),
+                      "speed": a.get("speed"), "step_completed": d.get("step_completed", True)})
         if d.get("step_completed", True):
             step += 1
     return cases
@@ -95,13 +100,19 @@ def plan_for(case, mode):
     return {"logged": case["plan"], "none": None, "fixed": FIXED_PLAN}[mode]
 
 
-def replay(cases, instruction, brain, plan_mode="logged"):
-    """Re-query the small brain and return a result dict per case."""
+def replay(cases, instruction, brain, plan_mode="logged", history_len=None):
+    """Re-query the small brain and return a result dict per case.
+
+    history_len: if given, brain.history is filled with the last N logged actions before each case
+    (what the executor would have seen live). None leaves brain.history untouched.
+    """
     results = []
     for c in cases:
         if len(c["frames"]) < 2:
             results.append({**c, "new": None, "latency": None, "skipped": "no frames"})
             continue
+        if history_len is not None:
+            brain.history = collections.deque(c["prior"][-history_len:] if history_len else [], maxlen=max(history_len, 1))
         imgs = [b64(p) for p in c["frames"]]
         plan = plan_for(c, plan_mode)
         t0 = time.time()
@@ -170,6 +181,7 @@ def main(argv=None):
     p.add_argument("--dry-run", action="store_true", help="do not call the model, only summarise the log")
     p.add_argument("--plan", choices=["logged", "none", "fixed"], default="logged",
                    help="which task plan the executor sees: the logged cloud plan, none, or a generic fixed plan")
+    p.add_argument("--history", help="comma-separated history lengths to sweep, e.g. 0,3,5,10 (default: model default)")
     p.add_argument("--out", help="write per-case results to a JSON file")
     a = p.parse_args(argv)
 
@@ -181,6 +193,11 @@ def main(argv=None):
         brain = SmallBrain.__new__(SmallBrain)
         BaseBrain.__init__(brain)  # ponytail: skip SmallBrain.__init__, replay needs no ROV backend
         instruction = brain.preset_instructions.get(a.instruction, a.instruction)
+        if a.history:
+            for n in (int(x) for x in a.history.split(",")):
+                print(f"\n=== history length {n} ===")
+                print(summarize(replay(cases, instruction, brain, a.plan, history_len=n), False))
+            return 0
         results = replay(cases, instruction, brain, a.plan)
     print(summarize(results, a.dry_run))
     if a.out:
