@@ -252,9 +252,17 @@ def main(argv=None):
     if a.dry_run:
         results = [{**c, "new": None, "latency": None} for c in cases]
     else:
-        from dual_brain_core import BaseBrain, SmallBrain
-        brain = SmallBrain.__new__(SmallBrain)
-        BaseBrain.__init__(brain)  # ponytail: skip SmallBrain.__init__, replay needs no ROV backend
+        from dual_brain_core import SmallBrain
+        from rov_backend import RovBackend
+
+        class NoBackend(RovBackend):  # replay never moves anything
+            def execute(self, direction, speed):
+                pass
+
+            def stop(self):
+                pass
+
+        brain = SmallBrain(backend=NoBackend(), decision_timeout=180.0)
         instruction = "" if a.blank_instruction else brain.preset_instructions.get(a.instruction, a.instruction)
         if a.models:
             rows = []
