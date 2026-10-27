@@ -22,7 +22,9 @@ frames; it is a proxy, not ground truth.
 | RQ3 history 10 | 10/11 | 2/10 | 0.22 | never | 9.8 |
 | RQ6 blank instruction (plan kept) | 10/11 | 4/10 | 0.00 | 7 | 9.3 |
 | RQ6 grey frames | 11/11 | 2/11 | 0.20 | never | 7.7 |
-| RQ7 qwen2.5vl:3b | 11/11 | 2/11 | 0.20 | 6 | 11.2 |
+| RQ7 qwen2.5vl:3b (M3 laptop) | 11/11 | 2/11 | 0.20 | 6 | 11.2 |
+| RQ7 qwen2.5vl:7b (RTX 4090, warm) | 11/11 | 4/11 | 0.20 | 7 | 0.9 |
+| RQ7 qwen2.5vl:3b (RTX 4090, warm) | 11/11 | 2/11 | 0.20 | 10 | 0.4 |
 
 Logged sequence oscillation rate for reference: 0.10.
 
@@ -41,8 +43,12 @@ Logged sequence oscillation rate for reference: 0.10.
 5. **Removing vision hurt more than removing the instruction**, but the language ablation is
    confounded: the logged plan was still in the prompt and names the pillar task. Re-run with
    `--plan none --blank-instruction` for a clean language ablation.
-6. **3B on an 8 GB laptop: 100% valid JSON, 5–11 s per decision** after warm-up. The 7B swaps on
-   this machine (0.05 tok/s) and could not be run; the size comparison is still open.
+6. **7B vs 3B (added 2026-10-27, RTX 4090 in a dedicated container):** both 100% valid JSON; the
+   7B agrees with the log a little more often (0.27–0.36 vs 0.09–0.18) at ~2× the latency (0.9 s vs
+   0.4 s per call). Run-to-run variation at temperature 0.5 is as large as the gap, so n = 11 does
+   not separate them. The 7B always emitted a confidence field (the 3B omitted it 4/11 times) but
+   it is still uncalibrated: 0.22 agreement in the ≥0.9 bucket vs 0.50 in 0.7–0.9. The same 7B
+   call took 352 s on the 8 GB laptop vs 0.9 s on the 4090.
 7. Twice the model answered in Chinese despite an English prompt; the legacy token
    normalisation in `rov_backend.py` caught the actions.
 
