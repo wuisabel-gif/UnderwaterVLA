@@ -46,7 +46,10 @@ def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--log", default="decision_log.json")
     p.add_argument("--out", default="FIG_synthetic")
+    p.add_argument("--size", default="640x480", help="WxH; smaller frames mean fewer vision tokens")
     a = p.parse_args(argv)
+    global W, H
+    W, H = (int(x) for x in a.size.lower().split("x"))
     os.makedirs(a.out, exist_ok=True)
     decisions = [(ts, d) for ts, d in load_log(a.log) if isinstance(d, dict) and "action" in d]
     n = 0
