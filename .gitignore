@@ -7,3 +7,4 @@ FIG/
 decision_log.json
 rov_control.log
 .DS_Store
+FIG_synthetic/
