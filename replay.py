@@ -245,6 +245,7 @@ def main(argv=None):
     p.add_argument("--models", help="comma-separated LM Studio model names to compare on the same cases")
     p.add_argument("--calibration", action="store_true", help="print agreement rate per confidence bucket")
     p.add_argument("--history", help="comma-separated history lengths to sweep, e.g. 0,3,5,10 (default: model default)")
+    p.add_argument("--timeout", type=float, default=180.0, help="seconds to wait per model call")
     p.add_argument("--out", help="write per-case results to a JSON file")
     a = p.parse_args(argv)
 
@@ -262,7 +263,7 @@ def main(argv=None):
             def stop(self):
                 pass
 
-        brain = SmallBrain(backend=NoBackend(), decision_timeout=180.0)
+        brain = SmallBrain(backend=NoBackend(), decision_timeout=a.timeout)
         instruction = "" if a.blank_instruction else brain.preset_instructions.get(a.instruction, a.instruction)
         if a.models:
             rows = []
